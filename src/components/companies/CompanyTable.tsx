@@ -1,11 +1,11 @@
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { StatusBadge } from "./StatusBadge";
-import { ExternalLink, MapPin, Users } from "lucide-react";
+import { MapPin, Users } from "lucide-react";
 import type { Company } from "@/types/database";
+import { computePlacementStatus, formatInISTHuman } from "@/lib/utils";
 
 interface CompanyTableProps {
   companies: Company[];
@@ -13,15 +13,18 @@ interface CompanyTableProps {
 }
 
 export const CompanyTable = ({ companies, loading }: CompanyTableProps) => {
+  const navigate = useNavigate();
   const formatDateTime = (dateTime: string | null) => {
     if (!dateTime) return "-";
-    return format(new Date(dateTime), "MMM d, yyyy h:mm a");
+    return formatInISTHuman(dateTime);
   };
 
   const formatDate = (date: string | null) => {
     if (!date) return "-";
-    return format(new Date(date), "MMM d, yyyy");
+    return formatInISTHuman(date).split(',')[0];
   };
+
+  // companies are expected to be pre-sorted by parent; render directly
 
   if (loading) {
     return (
@@ -45,20 +48,27 @@ export const CompanyTable = ({ companies, loading }: CompanyTableProps) => {
         <TableHeader>
           <TableRow>
             <TableHead className="w-[200px]">Company</TableHead>
+            <TableHead>Location</TableHead>
             <TableHead>Roles</TableHead>
+            <TableHead>CGPA</TableHead>
+            <TableHead>CTC</TableHead>
             <TableHead>Status</TableHead>
-            <TableHead>Visit Date</TableHead>
+            <TableHead>Registration Deadline</TableHead>
             <TableHead>PPT</TableHead>
             <TableHead>OA</TableHead>
             <TableHead>Interview</TableHead>
-            <TableHead>CTC</TableHead>
             <TableHead>Selected</TableHead>
-            <TableHead className="text-right">Action</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {companies.map((company) => (
-            <TableRow key={company.id}>
+          {companies.map((company) => {
+            const reg = company.registration_deadline ? new Date(company.registration_deadline) : null;
+            const now = new Date();
+            const twelveHours = 12 * 60 * 60 * 1000;
+            const isImminent = !!(reg && reg.getTime() - now.getTime() > 0 && reg.getTime() - now.getTime() <= twelveHours);
+
+            return (
+              <TableRow key={company.id} className="hover:bg-muted/20 cursor-pointer" onClick={() => navigate(`/companies/${company.id}`)}>
               <TableCell>
                 <div className="flex items-center gap-3">
                   {company.logo_url ? (
@@ -74,15 +84,10 @@ export const CompanyTable = ({ companies, loading }: CompanyTableProps) => {
                   )}
                   <div>
                     <div className="font-medium">{company.name}</div>
-                    {company.job_location && (
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <MapPin className="h-3 w-3" />
-                        {company.job_location}
-                      </div>
-                    )}
                   </div>
                 </div>
               </TableCell>
+              <TableCell className="text-sm">{company.job_location || '-'}</TableCell>
               <TableCell>
                 <div className="flex flex-wrap gap-1">
                   {company.roles?.slice(0, 2).map((role, i) => (
@@ -97,14 +102,15 @@ export const CompanyTable = ({ companies, loading }: CompanyTableProps) => {
                   )}
                 </div>
               </TableCell>
+              <TableCell className="text-sm">{company.cgpa_cutoff !== null && company.cgpa_cutoff !== undefined ? Number(company.cgpa_cutoff).toFixed(2) : '-'}</TableCell>
+              <TableCell className="font-medium">{company.offered_ctc || "-"}</TableCell>
               <TableCell>
-                <StatusBadge status={company.status} />
+                <StatusBadge status={computePlacementStatus(company as any)} />
               </TableCell>
-              <TableCell className="text-sm">{formatDate(company.visit_date)}</TableCell>
+              <TableCell className={`text-sm ${isImminent ? 'text-red-600 font-semibold' : ''}`}>{formatDateTime(company.registration_deadline)}</TableCell>
               <TableCell className="text-sm">{formatDateTime(company.ppt_datetime)}</TableCell>
               <TableCell className="text-sm">{formatDateTime(company.oa_datetime)}</TableCell>
               <TableCell className="text-sm">{formatDateTime(company.interview_datetime)}</TableCell>
-              <TableCell className="font-medium">{company.offered_ctc || "-"}</TableCell>
               <TableCell>
                 {company.people_selected !== null ? (
                   <div className="flex items-center gap-1">
@@ -115,15 +121,9 @@ export const CompanyTable = ({ companies, loading }: CompanyTableProps) => {
                   "-"
                 )}
               </TableCell>
-              <TableCell className="text-right">
-                <Button variant="ghost" size="sm" asChild>
-                  <Link to={`/companies/${company.id}`}>
-                    <ExternalLink className="h-4 w-4" />
-                  </Link>
-                </Button>
-              </TableCell>
-            </TableRow>
-          ))}
+              </TableRow>
+            );
+          })}
         </TableBody>
       </Table>
     </div>

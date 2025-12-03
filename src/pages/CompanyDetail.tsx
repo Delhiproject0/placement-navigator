@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { format } from "date-fns";
+import { formatInISTHuman } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Layout } from "@/components/layout/Layout";
@@ -22,6 +23,7 @@ const CompanyDetail = () => {
   const [company, setCompany] = useState<Company | null>(null);
   const [experiences, setExperiences] = useState<InterviewExperience[]>([]);
   const [questions, setQuestions] = useState<InterviewQuestion[]>([]);
+  const [selectedProfiles, setSelectedProfiles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [experienceDialogOpen, setExperienceDialogOpen] = useState(false);
@@ -32,6 +34,7 @@ const CompanyDetail = () => {
       fetchCompany();
       fetchExperiences();
       fetchQuestions();
+      fetchSelectedProfiles();
     }
   }, [id]);
 
@@ -44,7 +47,12 @@ const CompanyDetail = () => {
         .maybeSingle();
 
       if (error) throw error;
-      setCompany(data);
+      const anyData = data as any;
+      setCompany({
+        ...anyData,
+        registration_deadline: anyData.registration_deadline ?? null,
+        cgpa_cutoff: anyData.cgpa_cutoff ?? null,
+      });
     } catch (error) {
       console.error("Error fetching company:", error);
     } finally {
@@ -67,6 +75,37 @@ const CompanyDetail = () => {
     }
   };
 
+  const fetchSelectedProfiles = async () => {
+    try {
+      // Get user_ids from interview_experiences where result indicates selected
+      const { data: selData, error: selErr } = await supabase
+        .from('interview_experiences')
+        .select('user_id')
+        .eq('company_id', id)
+        .filter('user_id', 'not.is', null)
+        .ilike('result', '%selected%');
+
+      if (selErr) throw selErr;
+
+      const userIds = Array.from(new Set((selData || []).map((r: any) => r.user_id))).filter(Boolean);
+
+      if (userIds.length === 0) {
+        setSelectedProfiles([]);
+        return;
+      }
+
+      const { data: profiles, error: profErr } = await supabase
+        .from('profiles')
+        .select('*')
+        .in('user_id', userIds);
+
+      if (profErr) throw profErr;
+      setSelectedProfiles(profiles || []);
+    } catch (error) {
+      console.error('Error fetching selected profiles:', error);
+    }
+  };
+
   const fetchQuestions = async () => {
     try {
       const { data, error } = await supabase
@@ -84,7 +123,7 @@ const CompanyDetail = () => {
 
   const formatDateTime = (dateTime: string | null) => {
     if (!dateTime) return "Not scheduled";
-    return format(new Date(dateTime), "MMMM d, yyyy 'at' h:mm a");
+    return formatInISTHuman(dateTime);
   };
 
   if (loading) {
@@ -430,6 +469,32 @@ const CompanyDetail = () => {
                     <div>
                       <p className="text-sm font-medium">People Selected</p>
                       <p className="text-lg font-semibold">{company.people_selected}</p>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Selected Applicants</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {selectedProfiles.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No selected applicants recorded yet.</p>
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-sm text-muted-foreground">Total selected: {selectedProfiles.length}</p>
+                    <div className="flex flex-col gap-2">
+                      {selectedProfiles.map((p) => (
+                        <div key={p.id} className="flex items-center gap-3">
+                          <img src={p.avatar_url || '/placeholder.svg'} alt={p.full_name || p.email} className="h-8 w-8 rounded-full object-cover bg-muted" />
+                          <div>
+                            <div className="font-medium">{p.full_name || p.email}</div>
+                            <div className="text-xs text-muted-foreground">{p.email}</div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}

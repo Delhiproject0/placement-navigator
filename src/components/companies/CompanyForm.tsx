@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import type { Company, PlacementStatus } from "@/types/database";
+import { formatForInputInIST, inputISTToOffsetISOString } from "@/lib/utils";
 
 interface CompanyFormProps {
   company?: Company;
@@ -21,10 +22,12 @@ export const CompanyForm = ({ company, onSuccess }: CompanyFormProps) => {
     description: company?.description || "",
     logo_url: company?.logo_url || "",
     website_url: company?.website_url || "",
-    visit_date: company?.visit_date || "",
-    ppt_datetime: company?.ppt_datetime?.slice(0, 16) || "",
-    oa_datetime: company?.oa_datetime?.slice(0, 16) || "",
-    interview_datetime: company?.interview_datetime?.slice(0, 16) || "",
+  visit_date: company?.visit_date || "",
+  registration_deadline: company ? formatForInputInIST((company as any).registration_deadline) : "",
+  cgpa_cutoff: company?.cgpa_cutoff?.toString() || "",
+  ppt_datetime: company ? formatForInputInIST((company as any).ppt_datetime) : "",
+  oa_datetime: company ? formatForInputInIST((company as any).oa_datetime) : "",
+  interview_datetime: company ? formatForInputInIST((company as any).interview_datetime) : "",
     offered_ctc: company?.offered_ctc || "",
     ctc_distribution: company?.ctc_distribution || "",
     roles: company?.roles?.join(", ") || "",
@@ -46,13 +49,15 @@ export const CompanyForm = ({ company, onSuccess }: CompanyFormProps) => {
         logo_url: formData.logo_url || null,
         website_url: formData.website_url || null,
         visit_date: formData.visit_date || null,
-        ppt_datetime: formData.ppt_datetime || null,
-        oa_datetime: formData.oa_datetime || null,
-        interview_datetime: formData.interview_datetime || null,
+  ppt_datetime: formData.ppt_datetime ? inputISTToOffsetISOString(formData.ppt_datetime) : null,
+  oa_datetime: formData.oa_datetime ? inputISTToOffsetISOString(formData.oa_datetime) : null,
+  interview_datetime: formData.interview_datetime ? inputISTToOffsetISOString(formData.interview_datetime) : null,
         offered_ctc: formData.offered_ctc || null,
         ctc_distribution: formData.ctc_distribution || null,
         roles: formData.roles ? formData.roles.split(",").map((r) => r.trim()) : null,
         people_selected: formData.people_selected ? parseInt(formData.people_selected) : null,
+        registration_deadline: formData.registration_deadline || null,
+        cgpa_cutoff: formData.cgpa_cutoff ? parseFloat(formData.cgpa_cutoff) : null,
         status: formData.status,
         bond_details: formData.bond_details || null,
         job_location: formData.job_location || null,
@@ -62,12 +67,12 @@ export const CompanyForm = ({ company, onSuccess }: CompanyFormProps) => {
       if (company) {
         const { error } = await supabase
           .from("companies")
-          .update(payload)
+          .update(payload as any)
           .eq("id", company.id);
         if (error) throw error;
         toast({ title: "Success", description: "Company updated successfully" });
       } else {
-        const { error } = await supabase.from("companies").insert(payload);
+        const { error } = await supabase.from("companies").insert(payload as any);
         if (error) throw error;
         toast({ title: "Success", description: "Company added successfully" });
       }
@@ -167,6 +172,15 @@ export const CompanyForm = ({ company, onSuccess }: CompanyFormProps) => {
           />
         </div>
         <div className="space-y-2">
+          <Label htmlFor="registration_deadline">Registration Deadline</Label>
+          <Input
+            id="registration_deadline"
+            type="datetime-local"
+            value={formData.registration_deadline}
+            onChange={(e) => setFormData({ ...formData, registration_deadline: e.target.value })}
+          />
+        </div>
+        <div className="space-y-2">
           <Label htmlFor="ppt_datetime">PPT Date & Time</Label>
           <Input
             id="ppt_datetime"
@@ -175,6 +189,23 @@ export const CompanyForm = ({ company, onSuccess }: CompanyFormProps) => {
             onChange={(e) => setFormData({ ...formData, ppt_datetime: e.target.value })}
           />
         </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="cgpa_cutoff">CGPA Cutoff</Label>
+          <Input
+            id="cgpa_cutoff"
+            type="number"
+            step="0.01"
+            min="0"
+            max="10"
+            value={formData.cgpa_cutoff}
+            onChange={(e) => setFormData({ ...formData, cgpa_cutoff: e.target.value })}
+            placeholder="7.5"
+          />
+        </div>
+        <div />
       </div>
 
       <div className="grid grid-cols-2 gap-4">

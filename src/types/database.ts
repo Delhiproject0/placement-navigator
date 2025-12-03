@@ -1,4 +1,11 @@
-export type PlacementStatus = "upcoming" | "ongoing" | "completed" | "cancelled";
+export type PlacementStatus =
+  | "upcoming"
+  | "ongoing"
+  | "ppt_done"
+  | "oa_done"
+  | "interviews_done"
+  | "completed"
+  | "cancelled";
 export type AppRole = "admin" | "editor" | "viewer";
 
 export interface Company {
@@ -11,6 +18,8 @@ export interface Company {
   ppt_datetime: string | null;
   oa_datetime: string | null;
   interview_datetime: string | null;
+  registration_deadline: string | null;
+  cgpa_cutoff: number | null;
   offered_ctc: string | null;
   ctc_distribution: string | null;
   roles: string[] | null;
