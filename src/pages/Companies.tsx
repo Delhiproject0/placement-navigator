@@ -63,11 +63,12 @@ const Companies = () => {
       const m = s.match(/([\d,.]+)/);
       if (!m) return 0;
       // remove commas and parse
-      return parseFloat(m[1].replace(/,/g, '')) || 0;
+      return parseFloat(m[1].replace(/,/g, "")) || 0;
     };
 
     const list = [...filteredCompanies];
     const now = new Date();
+    const dir = sortDir === 'asc' ? 1 : -1;
     const statusOrder = [
       'completed',
       'interviews_done',
@@ -79,11 +80,17 @@ const Companies = () => {
       'upcoming',
       'cancelled',
     ];
-    if (sortBy === 'name') return list.sort((a, b) => a.name.localeCompare(b.name));
-    if (sortBy === 'registration_deadline') return list.sort((a, b) => safeDate(a.registration_deadline) - safeDate(b.registration_deadline));
-    if (sortBy === 'oa') return list.sort((a, b) => safeDate(a.oa_datetime) - safeDate(b.oa_datetime));
-    if (sortBy === 'interview') return list.sort((a, b) => safeDate(a.interview_datetime) - safeDate(b.interview_datetime));
-    if (sortBy === 'ctc') return list.sort((a, b) => parseCTC(b.offered_ctc) - parseCTC(a.offered_ctc));
+
+    if (sortBy === 'name') return list.sort((a, b) => dir * a.name.localeCompare(b.name));
+
+    if (sortBy === 'registration_deadline') return list.sort((a, b) => dir * (safeDate(a.registration_deadline) - safeDate(b.registration_deadline)));
+
+    if (sortBy === 'oa') return list.sort((a, b) => dir * (safeDate(a.oa_datetime) - safeDate(b.oa_datetime)));
+
+    if (sortBy === 'interview') return list.sort((a, b) => dir * (safeDate(a.interview_datetime) - safeDate(b.interview_datetime)));
+
+    if (sortBy === 'ctc') return list.sort((a, b) => dir * (parseCTC(a.offered_ctc) - parseCTC(b.offered_ctc)));
+
     if (sortBy === 'status') {
       return list.sort((a, b) => {
         const aStatus = computePlacementStatus(a as any);
@@ -98,14 +105,13 @@ const Companies = () => {
         const aIndex = statusOrder.indexOf(aKey as string);
         const bIndex = statusOrder.indexOf(bKey as string);
         if (aIndex === -1 && bIndex === -1) return 0;
-        if (aIndex === -1) return 1;
-        if (bIndex === -1) return -1;
-        // For descending (default), order by lower index first (completed first)
-        return sortDir === 'desc' ? aIndex - bIndex : bIndex - aIndex;
+        if (aIndex === -1) return 1 * dir;
+        if (bIndex === -1) return -1 * dir;
+        return dir * (aIndex - bIndex);
       });
     }
     return list;
-  }, [filteredCompanies, sortBy]);
+  }, [filteredCompanies, sortBy, sortDir]);
 
   return (
     <Layout>
