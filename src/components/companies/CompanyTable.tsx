@@ -3,7 +3,7 @@ import { format } from "date-fns";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "./StatusBadge";
-import { MapPin, Users } from "lucide-react";
+import { MapPin, Users, ExternalLink } from "lucide-react";
 import type { Company } from "@/types/database";
 import { computePlacementStatus, formatInISTHuman } from "@/lib/utils";
 
@@ -52,6 +52,7 @@ export const CompanyTable = ({ companies, loading }: CompanyTableProps) => {
             <TableHead>Roles</TableHead>
             <TableHead>CGPA</TableHead>
             <TableHead>CTC</TableHead>
+            <TableHead>External Form</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Registration Deadline</TableHead>
             <TableHead>PPT</TableHead>
@@ -104,6 +105,22 @@ export const CompanyTable = ({ companies, loading }: CompanyTableProps) => {
               </TableCell>
               <TableCell className="text-sm">{company.cgpa_cutoff !== null && company.cgpa_cutoff !== undefined ? Number(company.cgpa_cutoff).toFixed(2) : '-'}</TableCell>
               <TableCell className="font-medium">{company.offered_ctc || "-"}</TableCell>
+              <TableCell className="text-sm">
+                {company.external_form ? (
+                  <a
+                    href={company.external_form}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="inline-flex items-center gap-1 text-primary underline"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    <span className="truncate max-w-[12rem]">{company.external_form}</span>
+                  </a>
+                ) : (
+                  "-"
+                )}
+              </TableCell>
               <TableCell>
                 <StatusBadge status={computePlacementStatus(company as any)} />
               </TableCell>

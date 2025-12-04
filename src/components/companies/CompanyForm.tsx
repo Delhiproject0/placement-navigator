@@ -22,6 +22,7 @@ export const CompanyForm = ({ company, onSuccess }: CompanyFormProps) => {
     description: company?.description || "",
     logo_url: company?.logo_url || "",
     website_url: company?.website_url || "",
+    external_form: company?.external_form || "",
   visit_date: company?.visit_date || "",
   registration_deadline: company ? formatForInputInIST((company as any).registration_deadline) : "",
   cgpa_cutoff: company?.cgpa_cutoff?.toString() || "",
@@ -56,7 +57,8 @@ export const CompanyForm = ({ company, onSuccess }: CompanyFormProps) => {
         ctc_distribution: formData.ctc_distribution || null,
         roles: formData.roles ? formData.roles.split(",").map((r) => r.trim()) : null,
         people_selected: formData.people_selected ? parseInt(formData.people_selected) : null,
-        registration_deadline: formData.registration_deadline || null,
+  registration_deadline: formData.registration_deadline ? inputISTToOffsetISOString(formData.registration_deadline) : null,
+  external_form: formData.external_form || null,
         cgpa_cutoff: formData.cgpa_cutoff ? parseFloat(formData.cgpa_cutoff) : null,
         status: formData.status,
         bond_details: formData.bond_details || null,
@@ -137,6 +139,19 @@ export const CompanyForm = ({ company, onSuccess }: CompanyFormProps) => {
             type="url"
             value={formData.website_url}
             onChange={(e) => setFormData({ ...formData, website_url: e.target.value })}
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="external_form">External Form URL</Label>
+          <Input
+            id="external_form"
+            type="url"
+            placeholder="https://forms.gle/... or https://company.com/form"
+            value={formData.external_form}
+            onChange={(e) => setFormData({ ...formData, external_form: e.target.value })}
           />
         </div>
       </div>
@@ -236,7 +251,7 @@ export const CompanyForm = ({ company, onSuccess }: CompanyFormProps) => {
             id="offered_ctc"
             value={formData.offered_ctc}
             onChange={(e) => setFormData({ ...formData, offered_ctc: e.target.value })}
-            placeholder="12 LPA"
+            placeholder="INR 12,00,000"
           />
         </div>
         <div className="space-y-2">

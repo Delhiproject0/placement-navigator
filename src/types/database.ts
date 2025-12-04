@@ -30,6 +30,7 @@ export interface Company {
   eligibility_criteria: string | null;
   created_at: string;
   updated_at: string;
+  external_form?: string | null;
 }
 
 export interface InterviewExperience {
