@@ -112,10 +112,11 @@ export const CompanyTable = ({ companies, loading }: CompanyTableProps) => {
                     target="_blank"
                     rel="noreferrer"
                     onClick={(e) => e.stopPropagation()}
-                    className="inline-flex items-center gap-1 text-primary underline"
+                    className="inline-flex items-center text-primary"
+                    title={company.external_form}
+                    aria-label={`External form for ${company.name}`}
                   >
                     <ExternalLink className="h-4 w-4" />
-                    <span className="truncate max-w-[12rem]">{company.external_form}</span>
                   </a>
                 ) : (
                   "-"
