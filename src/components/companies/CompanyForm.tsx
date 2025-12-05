@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
-import type { Company, PlacementStatus } from "@/types/database";
+import type { Company } from "@/types/database";
 import { formatForInputInIST, inputISTToOffsetISOString } from "@/lib/utils";
 
 interface CompanyFormProps {
@@ -23,17 +23,16 @@ export const CompanyForm = ({ company, onSuccess }: CompanyFormProps) => {
     logo_url: company?.logo_url || "",
     website_url: company?.website_url || "",
     external_form: company?.external_form || "",
-  visit_date: company?.visit_date || "",
-  registration_deadline: company ? formatForInputInIST((company as any).registration_deadline) : "",
-  cgpa_cutoff: company?.cgpa_cutoff?.toString() || "",
-  ppt_datetime: company ? formatForInputInIST((company as any).ppt_datetime) : "",
-  oa_datetime: company ? formatForInputInIST((company as any).oa_datetime) : "",
-  interview_datetime: company ? formatForInputInIST((company as any).interview_datetime) : "",
+    visit_date: company?.visit_date || "",
+    registration_deadline: company ? formatForInputInIST((company as any).registration_deadline) : "",
+    cgpa_cutoff: company?.cgpa_cutoff?.toString() || "",
+    ppt_datetime: company ? formatForInputInIST((company as any).ppt_datetime) : "",
+    oa_datetime: company ? formatForInputInIST((company as any).oa_datetime) : "",
+    interview_datetime: company ? formatForInputInIST((company as any).interview_datetime) : "",
     offered_ctc: company?.offered_ctc || "",
     ctc_distribution: company?.ctc_distribution || "",
     roles: company?.roles?.join(", ") || "",
     people_selected: company?.people_selected?.toString() || "",
-    status: company?.status || "upcoming" as PlacementStatus,
     bond_details: company?.bond_details || "",
     job_location: company?.job_location || "",
     eligibility_criteria: company?.eligibility_criteria || "",
@@ -50,17 +49,17 @@ export const CompanyForm = ({ company, onSuccess }: CompanyFormProps) => {
         logo_url: formData.logo_url || null,
         website_url: formData.website_url || null,
         visit_date: formData.visit_date || null,
-  ppt_datetime: formData.ppt_datetime ? inputISTToOffsetISOString(formData.ppt_datetime) : null,
-  oa_datetime: formData.oa_datetime ? inputISTToOffsetISOString(formData.oa_datetime) : null,
-  interview_datetime: formData.interview_datetime ? inputISTToOffsetISOString(formData.interview_datetime) : null,
+        ppt_datetime: formData.ppt_datetime ? inputISTToOffsetISOString(formData.ppt_datetime) : null,
+        oa_datetime: formData.oa_datetime ? inputISTToOffsetISOString(formData.oa_datetime) : null,
+        interview_datetime: formData.interview_datetime ? inputISTToOffsetISOString(formData.interview_datetime) : null,
         offered_ctc: formData.offered_ctc || null,
         ctc_distribution: formData.ctc_distribution || null,
         roles: formData.roles ? formData.roles.split(",").map((r) => r.trim()) : null,
         people_selected: formData.people_selected ? parseInt(formData.people_selected) : null,
-  registration_deadline: formData.registration_deadline ? inputISTToOffsetISOString(formData.registration_deadline) : null,
-  external_form: formData.external_form || null,
+        registration_deadline: formData.registration_deadline ? inputISTToOffsetISOString(formData.registration_deadline) : null,
+        external_form: formData.external_form || null,
         cgpa_cutoff: formData.cgpa_cutoff ? parseFloat(formData.cgpa_cutoff) : null,
-        status: formData.status,
+        // status is computed from dates; do not send user-entered status
         bond_details: formData.bond_details || null,
         job_location: formData.job_location || null,
         eligibility_criteria: formData.eligibility_criteria || null,
@@ -103,23 +102,7 @@ export const CompanyForm = ({ company, onSuccess }: CompanyFormProps) => {
             required
           />
         </div>
-        <div className="space-y-2">
-          <Label htmlFor="status">Status</Label>
-          <Select
-            value={formData.status}
-            onValueChange={(value: PlacementStatus) => setFormData({ ...formData, status: value })}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="upcoming">Upcoming</SelectItem>
-              <SelectItem value="ongoing">Ongoing</SelectItem>
-              <SelectItem value="completed">Completed</SelectItem>
-              <SelectItem value="cancelled">Cancelled</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+        <div />
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -178,6 +161,19 @@ export const CompanyForm = ({ company, onSuccess }: CompanyFormProps) => {
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
+          <Label htmlFor="cgpa_cutoff">CGPA Cutoff</Label>
+          <Input
+            id="cgpa_cutoff"
+            type="number"
+            step="0.01"
+            min="0"
+            max="10"
+            value={formData.cgpa_cutoff}
+            onChange={(e) => setFormData({ ...formData, cgpa_cutoff: e.target.value })}
+            placeholder="7.5"
+          />
+        </div>
+        <div className="space-y-2">
           <Label htmlFor="visit_date">Visit Date</Label>
           <Input
             id="visit_date"
@@ -204,23 +200,6 @@ export const CompanyForm = ({ company, onSuccess }: CompanyFormProps) => {
             onChange={(e) => setFormData({ ...formData, ppt_datetime: e.target.value })}
           />
         </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="cgpa_cutoff">CGPA Cutoff</Label>
-          <Input
-            id="cgpa_cutoff"
-            type="number"
-            step="0.01"
-            min="0"
-            max="10"
-            value={formData.cgpa_cutoff}
-            onChange={(e) => setFormData({ ...formData, cgpa_cutoff: e.target.value })}
-            placeholder="7.5"
-          />
-        </div>
-        <div />
       </div>
 
       <div className="grid grid-cols-2 gap-4">

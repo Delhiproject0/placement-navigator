@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ArrowRight, Building2, Calendar, TrendingUp, Users } from "lucide-react";
 import type { Company } from "@/types/database";
+import { computePlacementStatus } from "@/lib/utils";
 
 const Index = () => {
   const [recentCompanies, setRecentCompanies] = useState<Company[]>([]);
@@ -19,23 +20,72 @@ const Index = () => {
   }, []);
 
   const fetchData = async () => {
-    const [allRes, upcomingRes] = await Promise.all([
-      supabase.from("companies").select("*").order("created_at", { ascending: false }).limit(5),
-      supabase.from("companies").select("*").eq("status", "upcoming").order("visit_date", { ascending: true }).limit(5),
-    ]);
+    // Fetch all companies and compute upcoming/recent based on date fields
+    const { data: allCompanies } = await supabase.from("companies").select("*");
+    const all = (allCompanies || []) as Company[];
+    const now = new Date();
 
-    setRecentCompanies(allRes.data || []);
-    setUpcomingCompanies(upcomingRes.data || []);
+    // For each company compute future dates and past dates arrays
+    const withDates = all.map((c) => {
+      const dates = [c.registration_deadline, c.ppt_datetime, c.oa_datetime, c.interview_datetime]
+        .map((d) => (d ? new Date(d) : null))
+        .filter(Boolean) as Date[];
+      const futureDates = dates.filter((d) => d.getTime() > now.getTime());
+      const pastDates = dates.filter((d) => d.getTime() <= now.getTime());
+      const nextUpcoming = futureDates.length ? new Date(Math.min(...futureDates.map((d) => d.getTime()))) : null;
+      const mostRecentPast = pastDates.length ? new Date(Math.max(...pastDates.map((d) => d.getTime()))) : null;
+      return { company: c, nextUpcoming, mostRecentPast };
+    });
 
-    const { data: allCompanies } = await supabase.from("companies").select("status, people_selected");
-    if (allCompanies) {
-      setStats({
-        total: allCompanies.length,
-        upcoming: allCompanies.filter((c) => c.status === "upcoming").length,
-        completed: allCompanies.filter((c) => c.status === "completed").length,
-        selected: allCompanies.reduce((sum, c) => sum + (c.people_selected || 0), 0),
-      });
-    }
+    // Upcoming: prioritize companies that have a pending registration_deadline.
+    const regUpcoming = withDates
+      .filter((w) => w.company.registration_deadline && new Date(w.company.registration_deadline!).getTime() > now.getTime())
+      .sort((a, b) => new Date(a.company.registration_deadline!).getTime() - new Date(b.company.registration_deadline!).getTime())
+      .map((w) => w.company);
+
+    // If we don't have enough registration-based upcoming, fill with other upcoming events (nearest nextUpcoming)
+    const otherUpcoming = withDates
+      .filter((w) => w.nextUpcoming && (!w.company.registration_deadline || new Date(w.company.registration_deadline!).getTime() <= now.getTime()))
+      .sort((a, b) => a.nextUpcoming!.getTime() - b.nextUpcoming!.getTime())
+      .map((w) => w.company);
+
+    const combinedUpcoming = Array.from(new Set([...regUpcoming, ...otherUpcoming])).slice(0, 5);
+
+    // Recent (Recently completed): interview passed OR (interview is null AND OA passed)
+    const recentCompleted = withDates
+      .filter((w) => {
+        const iv = w.company.interview_datetime ? new Date(w.company.interview_datetime) : null;
+        const oa = w.company.oa_datetime ? new Date(w.company.oa_datetime) : null;
+        if (iv && iv.getTime() <= now.getTime()) return true;
+        if (!iv && oa && oa.getTime() <= now.getTime()) return true;
+        return false;
+      })
+      .sort((a, b) => {
+        const aDate = a.company.interview_datetime ? new Date(a.company.interview_datetime).getTime() : (a.company.oa_datetime ? new Date(a.company.oa_datetime!).getTime() : 0);
+        const bDate = b.company.interview_datetime ? new Date(b.company.interview_datetime).getTime() : (b.company.oa_datetime ? new Date(b.company.oa_datetime!).getTime() : 0);
+        return bDate - aDate;
+      })
+      .slice(0, 5)
+      .map((w) => w.company);
+
+    
+
+    // Stats computed from date-based rules
+    const total = all.length;
+    const upcomingCount = all.filter((c) => c.registration_deadline && new Date(c.registration_deadline).getTime() > now.getTime()).length;
+    const completedCount = all.filter((c) => {
+      const iv = c.interview_datetime ? new Date(c.interview_datetime) : null;
+      const oa = c.oa_datetime ? new Date(c.oa_datetime) : null;
+      if (iv && iv.getTime() <= now.getTime()) return true;
+      if (!iv && oa && oa.getTime() <= now.getTime()) return true;
+      return false;
+    }).length;
+    const selectedCount = all.reduce((sum, c) => sum + (c.people_selected || 0), 0);
+
+    setStats({ total, upcoming: upcomingCount, completed: completedCount, selected: selectedCount });
+
+    setUpcomingCompanies(combinedUpcoming);
+    setRecentCompanies(recentCompleted);
   };
 
   return (
@@ -146,7 +196,7 @@ const Index = () => {
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Recently Added</CardTitle>
+              <CardTitle>Recently Completed</CardTitle>
               <Button variant="ghost" size="sm" asChild>
                 <Link to="/companies">View all</Link>
               </Button>

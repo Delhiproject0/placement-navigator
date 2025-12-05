@@ -3,6 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { format } from "date-fns";
 import { formatInISTHuman } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
+import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Layout } from "@/components/layout/Layout";
 import { StatusBadge } from "@/components/companies/StatusBadge";
@@ -11,11 +12,153 @@ import { ExperienceForm } from "@/components/companies/ExperienceForm";
 import { QuestionForm } from "@/components/companies/QuestionForm";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { ArrowLeft, Building2, Calendar, DollarSign, Edit, ExternalLink, MapPin, Plus, Users } from "lucide-react";
+import { ArrowLeft, Building2, Calendar, DollarSign, Edit, ExternalLink, MapPin, Plus, Users, Trash } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogTrigger,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from "@/components/ui/alert-dialog";
 import type { Company, InterviewExperience, InterviewQuestion } from "@/types/database";
+
+// Inline edit form for experiences
+function ExperienceEditForm({ experience, onCancel, onSaved }: { experience: InterviewExperience; onCancel: () => void; onSaved: () => void }) {
+  const [loading, setLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    round_name: experience.round_name || "",
+    experience: experience.experience || "",
+    difficulty: experience.difficulty || "",
+    result: experience.result || "",
+    tips: experience.tips || "",
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from("interview_experiences")
+        .update({
+          round_name: formData.round_name,
+          experience: formData.experience,
+          difficulty: formData.difficulty || null,
+          result: formData.result || null,
+          tips: formData.tips || null,
+        })
+        .eq("id", experience.id);
+      if (error) throw error;
+      toast({ title: "Success", description: "Experience updated" });
+      onSaved();
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to update", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="space-y-2">
+        <Label htmlFor="round_name">Round Name</Label>
+        <Input id="round_name" value={formData.round_name} onChange={(e) => setFormData({ ...formData, round_name: e.target.value })} required />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="experience">Experience</Label>
+        <Textarea id="experience" value={formData.experience} onChange={(e) => setFormData({ ...formData, experience: e.target.value })} rows={5} required />
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="difficulty">Difficulty</Label>
+          <Input id="difficulty" value={formData.difficulty} onChange={(e) => setFormData({ ...formData, difficulty: e.target.value })} />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="result">Result</Label>
+          <Input id="result" value={formData.result} onChange={(e) => setFormData({ ...formData, result: e.target.value })} />
+        </div>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="tips">Tips</Label>
+        <Textarea id="tips" value={formData.tips} onChange={(e) => setFormData({ ...formData, tips: e.target.value })} rows={3} />
+      </div>
+      <div className="flex gap-2 justify-end">
+        <Button variant="outline" onClick={onCancel} type="button">Cancel</Button>
+        <Button type="submit" disabled={loading}>{loading ? 'Saving...' : 'Save'}</Button>
+      </div>
+    </form>
+  );
+}
+
+// Inline edit form for questions
+function QuestionEditForm({ question, onCancel, onSaved }: { question: InterviewQuestion; onCancel: () => void; onSaved: () => void }) {
+  const [loading, setLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    question: question.question || "",
+    answer: question.answer || "",
+    topic: question.topic || "",
+    question_type: question.question_type || "",
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from("interview_questions")
+        .update({
+          question: formData.question,
+          answer: formData.answer || null,
+          topic: formData.topic || null,
+          question_type: formData.question_type || null,
+        })
+        .eq("id", question.id);
+      if (error) throw error;
+      toast({ title: "Success", description: "Question updated" });
+      onSaved();
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to update", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="space-y-2">
+        <Label htmlFor="question">Question</Label>
+        <Textarea id="question" value={formData.question} onChange={(e) => setFormData({ ...formData, question: e.target.value })} rows={3} required />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="answer">Answer</Label>
+        <Textarea id="answer" value={formData.answer} onChange={(e) => setFormData({ ...formData, answer: e.target.value })} rows={4} />
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="topic">Topic</Label>
+          <Input id="topic" value={formData.topic} onChange={(e) => setFormData({ ...formData, topic: e.target.value })} />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="question_type">Type</Label>
+          <Input id="question_type" value={formData.question_type} onChange={(e) => setFormData({ ...formData, question_type: e.target.value })} />
+        </div>
+      </div>
+      <div className="flex gap-2 justify-end">
+        <Button variant="outline" onClick={onCancel} type="button">Cancel</Button>
+        <Button type="submit" disabled={loading}>{loading ? 'Saving...' : 'Save'}</Button>
+      </div>
+    </form>
+  );
+}
 
 const CompanyDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -28,6 +171,11 @@ const CompanyDetail = () => {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [experienceDialogOpen, setExperienceDialogOpen] = useState(false);
   const [questionDialogOpen, setQuestionDialogOpen] = useState(false);
+  const [editExperienceOpen, setEditExperienceOpen] = useState(false);
+  const [editQuestionOpen, setEditQuestionOpen] = useState(false);
+  const [currentExperience, setCurrentExperience] = useState<InterviewExperience | null>(null);
+  const [currentQuestion, setCurrentQuestion] = useState<InterviewQuestion | null>(null);
+  const [processingId, setProcessingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (id) {
@@ -313,6 +461,47 @@ const CompanyDetail = () => {
                                 {exp.result}
                               </Badge>
                             )}
+                            {user && user.id === exp.user_id && (
+                              <div className="flex items-center gap-1">
+                                <Dialog open={editExperienceOpen && currentExperience?.id === exp.id} onOpenChange={setEditExperienceOpen}>
+                                  <DialogTrigger asChild>
+                                    <Button variant="ghost" size="sm" onClick={() => { setCurrentExperience(exp); setEditExperienceOpen(true); }}>
+                                      <Edit className="h-4 w-4" />
+                                    </Button>
+                                  </DialogTrigger>
+                                  <DialogContent>
+                                    <DialogHeader>
+                                      <DialogTitle>Edit Experience</DialogTitle>
+                                    </DialogHeader>
+                                    <ExperienceEditForm
+                                      experience={exp}
+                                      onCancel={() => { setEditExperienceOpen(false); setCurrentExperience(null); }}
+                                      onSaved={() => { setEditExperienceOpen(false); setCurrentExperience(null); fetchExperiences(); }}
+                                    />
+                                  </DialogContent>
+                                </Dialog>
+
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <Button variant="destructive" size="sm">
+                                      <Trash className="h-4 w-4" />
+                                    </Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>Delete experience?</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        This will permanently remove the experience. Are you sure?
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                      <AlertDialogAction onClick={async () => { setProcessingId(exp.id); try { const { error } = await supabase.from('interview_experiences').delete().eq('id', exp.id); if (error) throw error; fetchExperiences(); toast({ title: 'Deleted', description: 'Experience removed' }); } catch (err: any) { toast({ title: 'Error', description: err.message || 'Failed to delete', variant: 'destructive' }); } finally { setProcessingId(null); } }}>Delete</AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </CardHeader>
@@ -382,6 +571,47 @@ const CompanyDetail = () => {
                               <Badge variant="secondary" className="text-xs">
                                 {q.question_type}
                               </Badge>
+                            )}
+                            {user && user.id === q.user_id && (
+                              <div className="flex items-center gap-1 mt-2">
+                                <Dialog open={editQuestionOpen && currentQuestion?.id === q.id} onOpenChange={setEditQuestionOpen}>
+                                  <DialogTrigger asChild>
+                                    <Button variant="ghost" size="sm" onClick={() => { setCurrentQuestion(q); setEditQuestionOpen(true); }}>
+                                      <Edit className="h-4 w-4" />
+                                    </Button>
+                                  </DialogTrigger>
+                                  <DialogContent>
+                                    <DialogHeader>
+                                      <DialogTitle>Edit Question</DialogTitle>
+                                    </DialogHeader>
+                                    <QuestionEditForm
+                                      question={q}
+                                      onCancel={() => { setEditQuestionOpen(false); setCurrentQuestion(null); }}
+                                      onSaved={() => { setEditQuestionOpen(false); setCurrentQuestion(null); fetchQuestions(); }}
+                                    />
+                                  </DialogContent>
+                                </Dialog>
+
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <Button variant="destructive" size="sm">
+                                      <Trash className="h-4 w-4" />
+                                    </Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>Delete question?</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        This will permanently remove the question. Are you sure?
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                      <AlertDialogAction onClick={async () => { setProcessingId(q.id); try { const { error } = await supabase.from('interview_questions').delete().eq('id', q.id); if (error) throw error; fetchQuestions(); toast({ title: 'Deleted', description: 'Question removed' }); } catch (err: any) { toast({ title: 'Error', description: err.message || 'Failed to delete', variant: 'destructive' }); } finally { setProcessingId(null); } }}>Delete</AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              </div>
                             )}
                           </div>
                         </div>
