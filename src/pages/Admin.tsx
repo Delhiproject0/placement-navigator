@@ -8,7 +8,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
-import { Shield, Users, Building2 } from "lucide-react";
+import { Shield, Users, Building2, Trash } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogTrigger,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from "@/components/ui/alert-dialog";
 import type { Profile, UserRole } from "@/types/database";
 
 type AppRole = "admin" | "editor" | "viewer";
@@ -109,6 +120,31 @@ const Admin = () => {
     }
   };
 
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
+
+  const handleDeleteUser = async (userId: string) => {
+    setDeletingUserId(userId);
+    try {
+      // remove role first
+      const { error: roleErr } = await supabase.from("user_roles").delete().eq("user_id", userId);
+      if (roleErr) throw roleErr;
+
+      // remove profile
+      const { error: profileErr } = await supabase.from("profiles").delete().eq("user_id", userId);
+      if (profileErr) throw profileErr;
+
+      // update UI
+      setUsers((prev) => prev.filter((u) => u.user_id !== userId));
+
+      toast({ title: "Success", description: "User removed from system" });
+    } catch (error: any) {
+      console.error("Error deleting user:", error);
+      toast({ title: "Error", description: error.message || "Failed to delete user", variant: "destructive" });
+    } finally {
+      setDeletingUserId(null);
+    }
+  };
+
   if (!isAdmin) {
     return (
       <Layout>
@@ -202,23 +238,47 @@ const Admin = () => {
                           {u.role}
                         </Badge>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="flex items-center gap-2">
                         {u.user_id !== user?.id && (
-                          <Select
-                            value={u.role}
-                            onValueChange={(value: AppRole) =>
-                              updateUserRole(u.user_id, value)
-                            }
-                          >
-                            <SelectTrigger className="w-32">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="admin">Admin</SelectItem>
-                              <SelectItem value="editor">Editor</SelectItem>
-                              <SelectItem value="viewer">Viewer</SelectItem>
-                            </SelectContent>
-                          </Select>
+                          <>
+                            <Select
+                              value={u.role}
+                              onValueChange={(value: AppRole) =>
+                                updateUserRole(u.user_id, value)
+                              }
+                            >
+                              <SelectTrigger className="w-32">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="admin">Admin</SelectItem>
+                                <SelectItem value="editor">Editor</SelectItem>
+                                <SelectItem value="viewer">Viewer</SelectItem>
+                              </SelectContent>
+                            </Select>
+
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button variant="destructive" size="sm">
+                                  <Trash className="h-4 w-4" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Delete user?</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    This will remove the user's profile and roles from the system. This does not delete the user's auth account. Are you sure you want to continue?
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction onClick={() => handleDeleteUser(u.user_id)}>
+                                    {deletingUserId === u.user_id ? "Deleting..." : "Delete"}
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </>
                         )}
                       </TableCell>
                     </TableRow>
