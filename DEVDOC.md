@@ -9,24 +9,68 @@ reading the code. For setup and scripts, see [README.md](./README.md).
 
 ```
 Browser (Vite/React SPA on Vercel)
+  │  Authorization: Bearer <our own HS256 JWT>
+  ▼
+Edge Function  /functions/v1/placements      <-- the entire API
+  │              holds SUPABASE_SERVICE_ROLE_KEY
+  │              holds PLACEMENTS_JWT_SECRET
   │
-  ├── PostgREST  ──►  Supabase hosted project  jwaqisnpxkavkkjzvutl
-  │                     Postgres + RLS + GoTrue
+  ├──► Postgres (hosted project jwaqisnpxkavkkjzvutl)
+  │      app_users / auth_sessions  - bcrypt via pgcrypto
+  │      companies / experiences / questions / profiles / attachments
   │
-  └── Edge Function  /functions/v1/placements
-        │              (verifies the caller's Supabase JWT)
-        │
-        └──►  https://supabase.dileepadari.dev/functions/v1/upload
-                (self-hosted Supabase on an Oracle VM; 60s admin JWT)
-                │
-                └──►  writes to /mnt/storage/public-cdn
-                        served publicly by Caddy at
-                        https://mystorage.dileepadari.dev/{images,documents}/placements/*
+  └──► https://supabase.dileepadari.dev/functions/v1/upload
+         (self-hosted stack on an Oracle VM; 60s {is_admin} JWT)
+         │
+         └──► /mnt/storage/public-cdn, served by Caddy at
+              https://mystorage.dileepadari.dev/{images,documents}/placements/*
 ```
 
 Data lives in the hosted Supabase project. Files live on a self-hosted box. The
 two are deliberately separate: file bytes are large, cheap to serve from a VM
 already paid for, and would otherwise burn the project's free-tier storage quota.
+
+## Authentication
+
+**Supabase Auth (GoTrue) is not used.** Accounts are ordinary rows in
+`public.app_users`, passwords are bcrypt hashes produced by pgcrypto inside
+Postgres, and the edge function issues its own HS256 JWTs signed with
+`PLACEMENTS_JWT_SECRET`. This matches the pattern in moneyos and portfolio.
+
+- `app_signup()` / `app_login()` are `security definer` Postgres functions.
+  The plaintext password is an argument and is never stored or logged; the
+  comparison happens in the database via `crypt()`.
+- Access tokens last 1 hour. Refresh tokens last 30 days, are stored only as a
+  SHA-256 digest, and **rotate on every use**. Presenting a spent refresh token
+  is treated as theft and revokes every session for that user.
+- Failed logins return an identical 401 whether the account exists or not.
+  Making those distinguishable would turn login into an account-enumeration
+  oracle. Ten consecutive failures lock the account for fifteen minutes.
+- The role in a token is **not trusted**. `getCaller()` re-reads `user_roles`
+  and `app_users.is_active` on every request, so demoting or disabling someone
+  takes effect immediately rather than whenever their token happens to expire.
+
+### The thing to be careful about
+
+Because the API fronts the database with the service-role key, **row-level
+security is no longer what separates one student's data from another's** - the
+service-role client bypasses RLS entirely. Authorization is the explicit
+`requireUser` / `requireEditor` / `requireAdmin` call at the top of each route
+in `supabase/functions/placements/index.ts`.
+
+A missing check there is a data leak, not a policy misconfiguration. RLS is
+still enabled on every table as a backstop for the anon key, and `app_users`,
+`auth_sessions` and `password_resets` have RLS on with **no policies at all**
+plus explicit `revoke` from `anon` and `authenticated`, so the browser key can
+never reach a password hash whatever else changes.
+
+Two grant subtleties that will bite anyone editing the migrations:
+
+- `revoke all on function ... from public` also strips `service_role`, because
+  it holds execute *through* PUBLIC. Every such revoke is followed by an
+  explicit `grant execute ... to service_role`.
+- Table grants are written out explicitly rather than inherited from Supabase's
+  default privileges, which differ between a local stack and a hosted project.
 
 ---
 
@@ -134,19 +178,21 @@ curl -s https://supabase.dileepadari.dev/functions/v1/hello
 ## Authorization model
 
 Three roles in the `app_role` enum: `admin`, `editor`, `viewer`. A user's role is
-a row in `user_roles`; there is no email-domain rule and no JWT claim.
+a row in `user_roles`; there is no email-domain rule.
 
-Enforcement is in Postgres, via two `security definer` helpers used by RLS
-policies:
-
-- `has_role(_user_id uuid, _role app_role) → boolean`
-- `can_edit(_user_id uuid) → boolean` (admin or editor)
+| | viewer | editor | admin |
+|---|---|---|---|
+| Read companies, experiences, questions | yes (so can anonymous) | yes | yes |
+| Contribute an experience or question | yes | yes | yes |
+| Edit/delete **own** contribution | yes | yes | yes |
+| Edit/delete **anyone's** contribution | no | yes | yes |
+| Create/edit a company | no | yes | yes |
+| Delete a company | no | no | yes |
+| Manage users and roles | no | no | yes |
 
 `useAuth()` exposes `isAdmin` / `isEditor` / `canEdit` for **UI affordances only**.
-Hiding a button is not authorization. Every mutation must also be covered by a
-policy, and every new table must have RLS enabled with explicit policies -
-a table with RLS on and no policy is unreadable, and a table with RLS off is
-world-writable.
+Hiding a button is not authorization - the check that matters is the one in the
+edge function route.
 
 ---
 

@@ -1,0 +1,318 @@
+/**
+ * API integration tests against a real local stack.
+ *
+ * These run against `supabase start` + `supabase functions serve`, not mocks -
+ * the things most worth testing here are the boundary between the function and
+ * Postgres (grants, composite-null handling, bcrypt) and the authorization
+ * checks that replaced row-level security. A mock would assert my assumptions
+ * back at me and miss exactly those.
+ *
+ * Skipped automatically when the stack is not running, so `npm test` still
+ * works without Docker.
+ */
+
+import { describe, expect, it } from "vitest";
+
+const API = process.env.PLACEMENTS_API_URL ?? "http://127.0.0.1:54321/functions/v1/placements";
+const SEED_PASSWORD = "placement123";
+
+/**
+ * Probed at module scope, not in beforeAll: `it.runIf(...)` is evaluated while
+ * tests are being collected, which happens before any hook runs. Setting this
+ * in beforeAll would leave it false and silently skip the entire suite.
+ */
+const stackUp = await (async () => {
+  try {
+    const response = await fetch(`${API}/health`, { signal: AbortSignal.timeout(3000) });
+    return response.ok;
+  } catch {
+    return false;
+  }
+})();
+
+if (!stackUp) {
+  console.warn(
+    `\n  Skipping API tests: no stack at ${API}.` +
+      `\n  Run: npx supabase start && npx supabase functions serve\n`,
+  );
+}
+
+async function api(path: string, init: RequestInit = {}, token?: string) {
+  const headers = new Headers(init.headers);
+  if (!headers.has("content-type") && init.body) headers.set("content-type", "application/json");
+  if (token) headers.set("authorization", `Bearer ${token}`);
+  const response = await fetch(`${API}${path}`, { ...init, headers });
+  const text = await response.text();
+  let body: unknown = null;
+  try {
+    body = text ? JSON.parse(text) : null;
+  } catch {
+    body = text;
+  }
+  return { status: response.status, body: body as Record<string, never> };
+}
+
+async function login(email: string, password = SEED_PASSWORD) {
+  const { body } = await api("/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
+  return body as unknown as { access_token: string; refresh_token: string; user: { id: string; role: string } };
+}
+
+describe.runIf(!process.env.SKIP_API_TESTS)("auth", () => {
+  it.runIf(stackUp)("signs a seeded user in and returns a usable token", async () => {
+    const session = await login("admin@iiit.ac.in");
+    expect(session.access_token).toBeTruthy();
+    expect(session.refresh_token).toBeTruthy();
+    expect(session.user.role).toBe("admin");
+
+    const me = await api("/auth/me", {}, session.access_token);
+    expect(me.status).toBe(200);
+  });
+
+  it.runIf(stackUp)("treats email as case-insensitive", async () => {
+    const { status } = await api("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email: "ADMIN@IIIT.AC.IN", password: SEED_PASSWORD }),
+    });
+    expect(status).toBe(200);
+  });
+
+  it.runIf(stackUp)("gives the same answer for a wrong password and an unknown account", async () => {
+    // Different responses here would make this endpoint an account-enumeration
+    // oracle: anyone could discover which addresses are registered.
+    const wrongPassword = await api("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email: "admin@iiit.ac.in", password: "definitely-wrong" }),
+    });
+    const unknownAccount = await api("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email: "nobody-here@iiit.ac.in", password: "definitely-wrong" }),
+    });
+
+    expect(wrongPassword.status).toBe(401);
+    expect(unknownAccount.status).toBe(401);
+    expect(wrongPassword.body).toEqual(unknownAccount.body);
+  });
+
+  it.runIf(stackUp)("rejects a weak password at signup", async () => {
+    const { status, body } = await api("/auth/signup", {
+      method: "POST",
+      body: JSON.stringify({ email: `weak-${Date.now()}@iiit.ac.in`, password: "short" }),
+    });
+    expect(status).toBe(400);
+    expect((body as { error: { code: string } }).error.code).toBe("WEAK_PASSWORD");
+  });
+
+  it.runIf(stackUp)("rejects a duplicate email regardless of case", async () => {
+    const email = `dupe-${Date.now()}@iiit.ac.in`;
+    const first = await api("/auth/signup", {
+      method: "POST",
+      body: JSON.stringify({ email, password: SEED_PASSWORD }),
+    });
+    expect(first.status).toBe(201);
+
+    const second = await api("/auth/signup", {
+      method: "POST",
+      body: JSON.stringify({ email: email.toUpperCase(), password: SEED_PASSWORD }),
+    });
+    expect(second.status).toBe(409);
+  });
+
+  it.runIf(stackUp)("rotates refresh tokens and kills every session on reuse", async () => {
+    const email = `rotate-${Date.now()}@iiit.ac.in`;
+    const signup = await api("/auth/signup", {
+      method: "POST",
+      body: JSON.stringify({ email, password: SEED_PASSWORD }),
+    });
+    const first = (signup.body as unknown as { refresh_token: string }).refresh_token;
+
+    const refreshed = await api("/auth/refresh", {
+      method: "POST",
+      body: JSON.stringify({ refresh_token: first }),
+    });
+    expect(refreshed.status).toBe(200);
+    const second = (refreshed.body as unknown as { refresh_token: string }).refresh_token;
+    expect(second).not.toBe(first);
+
+    // Replaying the spent token means it was captured. The correct response is
+    // to end every session for that user, not just refuse this one.
+    const replay = await api("/auth/refresh", {
+      method: "POST",
+      body: JSON.stringify({ refresh_token: first }),
+    });
+    expect(replay.status).toBe(401);
+
+    const afterAlarm = await api("/auth/refresh", {
+      method: "POST",
+      body: JSON.stringify({ refresh_token: second }),
+    });
+    expect(afterAlarm.status).toBe(401);
+  });
+
+  it.runIf(stackUp)("rejects a token signed with the wrong secret", async () => {
+    const encode = (value: object) =>
+      btoa(JSON.stringify(value)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    const now = Math.floor(Date.now() / 1000);
+    const forged = [
+      encode({ alg: "HS256", typ: "JWT" }),
+      encode({ sub: crypto.randomUUID(), email: "x@x.com", role: "admin", iat: now, exp: now + 3600 }),
+      "not-a-real-signature",
+    ].join(".");
+
+    const { status } = await api("/admin/users", {}, forged);
+    expect(status).toBe(401);
+  });
+});
+
+describe.runIf(!process.env.SKIP_API_TESTS)("authorization", () => {
+  it.runIf(stackUp)("enforces the role ladder on company writes", async () => {
+    const admin = await login("admin@iiit.ac.in");
+    const editor = await login("editor@iiit.ac.in");
+    const student = await login("student@iiit.ac.in");
+
+    const payload = JSON.stringify({ name: `Test Co ${Date.now()}` });
+
+    expect((await api("/companies", { method: "POST", body: payload })).status).toBe(401);
+    expect((await api("/companies", { method: "POST", body: payload }, student.access_token)).status).toBe(403);
+
+    const created = await api("/companies", { method: "POST", body: payload }, editor.access_token);
+    expect(created.status).toBe(201);
+    const id = (created.body as unknown as { company: { id: string } }).company.id;
+
+    // Delete is admin-only, deliberately: it cascades to every experience and
+    // question attached to the company.
+    expect((await api(`/companies/${id}`, { method: "DELETE" }, editor.access_token)).status).toBe(403);
+    expect((await api(`/companies/${id}`, { method: "DELETE" }, admin.access_token)).status).toBe(200);
+  });
+
+  it.runIf(stackUp)("lets a moderator edit a contribution they do not own", async () => {
+    const student = await login("student@iiit.ac.in");
+    const editor = await login("editor@iiit.ac.in");
+
+    const companies = await api("/companies");
+    const companyId = (companies.body as unknown as { companies: Array<{ id: string }> }).companies[0].id;
+
+    const created = await api(
+      "/experiences",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          company_id: companyId,
+          round_name: "Online Assessment",
+          experience: "A sufficiently long description of what happened in this round.",
+          difficulty: "Medium",
+          result: "Pending",
+        }),
+      },
+      student.access_token,
+    );
+    expect(created.status).toBe(201);
+    const id = (created.body as unknown as { item: { id: string } }).item.id;
+
+    // The old UI gated this on ownership alone, so an admin could not remove a
+    // spam entry.
+    const moderated = await api(
+      `/experiences/${id}`,
+      { method: "PATCH", body: JSON.stringify({ tips: "Edited by a moderator" }) },
+      editor.access_token,
+    );
+    expect(moderated.status).toBe(200);
+
+    expect((await api(`/experiences/${id}`, { method: "DELETE" }, editor.access_token)).status).toBe(200);
+  });
+
+  it.runIf(stackUp)("stops an unrelated user editing someone else's contribution", async () => {
+    const student = await login("student@iiit.ac.in");
+    const outsiderEmail = `outsider-${Date.now()}@iiit.ac.in`;
+    const outsider = await api("/auth/signup", {
+      method: "POST",
+      body: JSON.stringify({ email: outsiderEmail, password: SEED_PASSWORD }),
+    });
+    const outsiderToken = (outsider.body as unknown as { access_token: string }).access_token;
+
+    const companies = await api("/companies");
+    const companyId = (companies.body as unknown as { companies: Array<{ id: string }> }).companies[0].id;
+
+    const created = await api(
+      "/experiences",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          company_id: companyId,
+          round_name: "Interview",
+          experience: "A sufficiently long description of what happened in this round.",
+        }),
+      },
+      student.access_token,
+    );
+    const id = (created.body as unknown as { item: { id: string } }).item.id;
+
+    const hijack = await api(
+      `/experiences/${id}`,
+      { method: "PATCH", body: JSON.stringify({ tips: "hijacked" }) },
+      outsiderToken,
+    );
+    expect(hijack.status).toBe(403);
+  });
+
+  it.runIf(stackUp)("refuses to let an admin demote themselves", async () => {
+    // Otherwise the last admin can lock everyone out of the panel with no
+    // route back in through the UI.
+    const admin = await login("admin@iiit.ac.in");
+    const { status, body } = await api(
+      `/admin/users/${admin.user.id}/role`,
+      { method: "PATCH", body: JSON.stringify({ role: "viewer" }) },
+      admin.access_token,
+    );
+    expect(status).toBe(400);
+    expect((body as { error: { code: string } }).error.code).toBe("CANNOT_DEMOTE_SELF");
+  });
+
+  it.runIf(stackUp)("keeps the admin area closed to non-admins", async () => {
+    const student = await login("student@iiit.ac.in");
+    expect((await api("/admin/users")).status).toBe(401);
+    expect((await api("/admin/users", {}, student.access_token)).status).toBe(403);
+  });
+});
+
+describe.runIf(!process.env.SKIP_API_TESTS)("validation", () => {
+  it.runIf(stackUp)("reports per-field errors rather than a raw database error", async () => {
+    const student = await login("student@iiit.ac.in");
+    const companies = await api("/companies");
+    const companyId = (companies.body as unknown as { companies: Array<{ id: string }> }).companies[0].id;
+
+    const { status, body } = await api(
+      "/experiences",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          company_id: companyId,
+          round_name: "OA",
+          experience: "too short",
+          result: "Maybe",
+        }),
+      },
+      student.access_token,
+    );
+
+    expect(status).toBe(422);
+    const details = (body as { error: { details: Record<string, string> } }).error.details;
+    expect(details).toHaveProperty("experience");
+    expect(details).toHaveProperty("result");
+  });
+
+  it.runIf(stackUp)("rejects a CGPA the column cannot hold", async () => {
+    // numeric(3,2) overflows above 9.99; this used to surface as a raw
+    // Postgres error string in a toast.
+    const editor = await login("editor@iiit.ac.in");
+    const { status, body } = await api(
+      "/companies",
+      { method: "POST", body: JSON.stringify({ name: "Overflow Co", cgpa_cutoff: 12.5 }) },
+      editor.access_token,
+    );
+    expect(status).toBe(422);
+    expect((body as { error: { details: Record<string, string> } }).error.details).toHaveProperty("cgpa_cutoff");
+  });
+});

@@ -5,7 +5,12 @@ import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist", "coverage", "playwright-report", "test-results", "supabase/functions/**"] },
+  {
+    // supabase/** is Deno, not browser TypeScript: different globals, different
+    // module resolution, and `deno check` in CI is what actually typechecks it.
+    // .temp is scratch the CLI regenerates on every start.
+    ignores: ["dist", "coverage", "playwright-report", "test-results", "supabase/**"],
+  },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ["**/*.{ts,tsx}"],
