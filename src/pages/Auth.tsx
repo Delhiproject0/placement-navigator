@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { toast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { Building2, Loader2 } from "lucide-react";
 import { errorMessage } from "@/lib/errors";
 
@@ -42,10 +42,7 @@ const Auth = () => {
           },
         });
         if (error) throw error;
-        toast({
-          title: "Account created!",
-          description: "You can now sign in with your credentials.",
-        });
+        toast.success("Account created!", { description: "You can now sign in with your credentials." });
         setIsSignUp(false);
       } else {
         const { error } = await supabase.auth.signInWithPassword({
@@ -53,18 +50,11 @@ const Auth = () => {
           password,
         });
         if (error) throw error;
-        toast({
-          title: "Welcome back!",
-          description: "You have successfully signed in.",
-        });
+        toast.success("Welcome back!", { description: "You have successfully signed in." });
         navigate("/");
       }
     } catch (error) {
-      toast({
-        title: "Error",
-        description: errorMessage(error),
-        variant: "destructive",
-      });
+      toast.error(errorMessage(error));
     } finally {
       setLoading(false);
     }

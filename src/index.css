@@ -2,95 +2,190 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
-All colors MUST be HSL.
-*/
+/**
+ * Design tokens.
+ *
+ * The palette is warm paper and oxide rather than the default shadcn slate:
+ * a near-black primary on cool grey is the giveaway of an untouched scaffold,
+ * and this app is read mostly as dense tabular data where a warm ground is
+ * easier on the eye over long sessions.
+ *
+ * Every value is raw HSL channels (no hsl() wrapper) because Tailwind composes
+ * them with an alpha channel: hsl(var(--primary) / 0.12).
+ */
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* Ground and ink */
+    --background: 40 33% 97.5%;
+    --foreground: 218 27% 12%;
 
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 218 27% 12%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover: 40 33% 99%;
+    --popover-foreground: 218 27% 12%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    --muted: 40 16% 92%;
+    --muted-foreground: 218 10% 42%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    /* Oxide - the single accent that carries every primary action */
+    --primary: 18 74% 45%;
+    --primary-foreground: 40 40% 98%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    /* Ink, used as a solid secondary so not everything is orange */
+    --secondary: 218 27% 12%;
+    --secondary-foreground: 40 33% 97%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    /* Moss teal, for the "good news" side of the palette */
+    --accent: 168 44% 34%;
+    --accent-foreground: 40 33% 97%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 358 62% 46%;
+    --destructive-foreground: 40 40% 98%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --success: 152 45% 32%;
+    --success-foreground: 40 40% 98%;
+    --warning: 36 84% 44%;
+    --warning-foreground: 218 27% 12%;
+    --info: 218 60% 45%;
+    --info-foreground: 40 40% 98%;
 
-    --radius: 0.5rem;
+    --border: 38 18% 86%;
+    --input: 38 18% 84%;
+    --ring: 18 74% 45%;
 
-    --sidebar-background: 0 0% 98%;
+    /**
+     * Placement phases.
+     *
+     * Seven distinct hues, because the phase is the single most scanned value
+     * in the company table. Mapping them onto four generic badge variants (the
+     * previous approach) made two different phases render identically.
+     */
+    --phase-announced: 218 14% 52%;
+    --phase-registration-open: 168 44% 34%;
+    --phase-registration-closed: 218 12% 45%;
+    --phase-ppt: 262 44% 50%;
+    --phase-oa: 32 80% 44%;
+    --phase-interviews-done: 18 74% 45%;
+    --phase-completed: 218 12% 38%;
+    --phase-cancelled: 358 55% 45%;
 
-    --sidebar-foreground: 240 5.3% 26.1%;
+    /* Chart series, ordered for categorical use */
+    --chart-1: 18 74% 45%;
+    --chart-2: 168 44% 34%;
+    --chart-3: 262 44% 50%;
+    --chart-4: 32 80% 44%;
+    --chart-5: 218 60% 45%;
+    --chart-6: 358 55% 45%;
 
-    --sidebar-primary: 240 5.9% 10%;
+    /**
+     * Non-uniform radii. One radius everywhere is the other scaffold tell:
+     * real interfaces use tighter corners on controls than on containers.
+     * --radius stays defined because the vendored shadcn primitives read it.
+     */
+    --radius-xs: 0.25rem;
+    --radius-sm: 0.375rem;
+    --radius-md: 0.625rem;
+    --radius-lg: 0.875rem;
+    --radius-xl: 1.25rem;
+    --radius: 0.625rem;
 
-    --sidebar-primary-foreground: 0 0% 98%;
+    /**
+     * Shadows tinted with the foreground hue and layered in two parts. Pure
+     * black shadows at a single offset read as flat and synthetic.
+     */
+    --shadow-xs: 0 1px 2px hsl(218 27% 12% / 0.05);
+    --shadow-sm: 0 1px 2px hsl(218 27% 12% / 0.06), 0 2px 6px -2px hsl(218 27% 12% / 0.07);
+    --shadow-md: 0 2px 4px hsl(218 27% 12% / 0.05), 0 8px 20px -6px hsl(218 27% 12% / 0.1);
+    --shadow-lg: 0 4px 8px hsl(218 27% 12% / 0.05), 0 18px 40px -12px hsl(218 27% 12% / 0.16);
 
-    --sidebar-accent: 240 4.8% 95.9%;
+    --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 
-    --sidebar-accent-foreground: 240 5.9% 10%;
-
-    --sidebar-border: 220 13% 91%;
-
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    /* Sidebar tokens, kept for the vendored shadcn sidebar primitive */
+    --sidebar-background: 40 20% 95%;
+    --sidebar-foreground: 218 27% 12%;
+    --sidebar-primary: 18 74% 45%;
+    --sidebar-primary-foreground: 40 40% 98%;
+    --sidebar-accent: 40 16% 90%;
+    --sidebar-accent-foreground: 218 27% 12%;
+    --sidebar-border: 38 18% 84%;
+    --sidebar-ring: 18 74% 45%;
   }
 
+  /**
+   * Dark theme. Warm-neutral rather than the usual blue-grey, so it reads as
+   * the same product with the lights off instead of a different one. Not a
+   * mechanical inversion: the primary lightens and desaturates slightly,
+   * because full-chroma oxide on a dark ground vibrates.
+   */
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
+    --background: 220 18% 8%;
+    --foreground: 40 20% 92%;
 
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
+    --card: 220 16% 11%;
+    --card-foreground: 40 20% 92%;
 
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 220 16% 11%;
+    --popover-foreground: 40 20% 92%;
 
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    --muted: 220 12% 17%;
+    --muted-foreground: 40 8% 62%;
 
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
+    --primary: 20 82% 58%;
+    --primary-foreground: 220 22% 8%;
 
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
+    --secondary: 40 20% 92%;
+    --secondary-foreground: 220 18% 8%;
 
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    --accent: 168 40% 48%;
+    --accent-foreground: 220 22% 8%;
 
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 358 66% 58%;
+    --destructive-foreground: 220 22% 8%;
 
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --success: 152 42% 46%;
+    --success-foreground: 220 22% 8%;
+    --warning: 36 82% 56%;
+    --warning-foreground: 220 22% 8%;
+    --info: 218 66% 62%;
+    --info-foreground: 220 22% 8%;
+
+    --border: 220 12% 20%;
+    --input: 220 12% 22%;
+    --ring: 20 82% 58%;
+
+    --phase-announced: 220 10% 62%;
+    --phase-registration-open: 168 40% 48%;
+    --phase-registration-closed: 220 10% 58%;
+    --phase-ppt: 262 50% 66%;
+    --phase-oa: 32 78% 58%;
+    --phase-interviews-done: 20 82% 58%;
+    --phase-completed: 220 10% 52%;
+    --phase-cancelled: 358 60% 60%;
+
+    --chart-1: 20 82% 58%;
+    --chart-2: 168 40% 48%;
+    --chart-3: 262 50% 66%;
+    --chart-4: 32 78% 58%;
+    --chart-5: 218 66% 62%;
+    --chart-6: 358 60% 60%;
+
+    /* Shadows need more opacity and less spread to read on a dark ground. */
+    --shadow-xs: 0 1px 2px hsl(0 0% 0% / 0.3);
+    --shadow-sm: 0 1px 2px hsl(0 0% 0% / 0.36), 0 2px 6px -2px hsl(0 0% 0% / 0.4);
+    --shadow-md: 0 2px 4px hsl(0 0% 0% / 0.36), 0 8px 20px -6px hsl(0 0% 0% / 0.46);
+    --shadow-lg: 0 4px 8px hsl(0 0% 0% / 0.4), 0 18px 40px -12px hsl(0 0% 0% / 0.55);
+
+    --sidebar-background: 220 16% 10%;
+    --sidebar-foreground: 40 20% 92%;
+    --sidebar-primary: 20 82% 58%;
+    --sidebar-primary-foreground: 220 22% 8%;
+    --sidebar-accent: 220 12% 16%;
+    --sidebar-accent-foreground: 40 20% 92%;
+    --sidebar-border: 220 12% 20%;
+    --sidebar-ring: 20 82% 58%;
   }
 }
 
@@ -99,7 +194,83 @@ All colors MUST be HSL.
     @apply border-border;
   }
 
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
   body {
     @apply bg-background text-foreground;
+    font-feature-settings: "cv05" 1, "ss01" 1;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /**
+   * Fraunces carries the identity. SOFT rounds the terminals slightly and WONK
+   * switches in the single-storey g and the angled leg forms - that pair is
+   * what stops the headings reading as stock Georgia.
+   */
+  h1, h2, h3, .font-display {
+    font-variation-settings: "SOFT" 30, "WONK" 1;
+    letter-spacing: -0.017em;
+  }
+
+  /* Figures that get compared down a column must not jitter. */
+  .tabular, td .tabular, .font-mono {
+    font-variant-numeric: tabular-nums slashed-zero;
+  }
+
+  /* Keyboard focus stays visible; pointer focus does not draw a ring. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
+  ::selection {
+    background: hsl(var(--primary) / 0.22);
+  }
+
+  /* A hairline scrollbar, so wide tables don't gain a heavy grey slab. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted-foreground) / 0.35) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--muted-foreground) / 0.3);
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--muted-foreground) / 0.5);
+  }
+}
+
+@layer components {
+  /* The faint dot field behind the hero. */
+  .bg-dot-grid {
+    background-image: radial-gradient(hsl(var(--foreground) / 0.09) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+
+  /* Fades a scrolling ticker out at both ends instead of clipping it. */
+  .mask-fade-x {
+    -webkit-mask-image: linear-gradient(to right, transparent, black 6%, black 94%, transparent);
+    mask-image: linear-gradient(to right, transparent, black 6%, black 94%, transparent);
+  }
+}
+
+/* Respect the OS setting - every duration collapses, nothing is disabled. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

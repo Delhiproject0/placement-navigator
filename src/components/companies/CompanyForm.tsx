@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { toast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import type { Company } from "@/types/database";
 import { formatForInputInIST, inputISTToOffsetISOString } from "@/lib/utils";
@@ -71,20 +71,16 @@ export const CompanyForm = ({ company, onSuccess }: CompanyFormProps) => {
           .update(payload)
           .eq("id", company.id);
         if (error) throw error;
-        toast({ title: "Success", description: "Company updated successfully" });
+        toast.success("Company updated successfully");
       } else {
         const { error } = await supabase.from("companies").insert(payload);
         if (error) throw error;
-        toast({ title: "Success", description: "Company added successfully" });
+        toast.success("Company added successfully");
       }
 
       onSuccess();
     } catch (error) {
-      toast({
-        title: "Error",
-        description: errorMessage(error),
-        variant: "destructive",
-      });
+      toast.error(errorMessage(error));
     } finally {
       setLoading(false);
     }

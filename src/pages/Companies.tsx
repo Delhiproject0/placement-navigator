@@ -1,139 +1,169 @@
-import { useState, useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Layout } from "@/components/layout/Layout";
-import { CompanyTable } from "@/components/companies/CompanyTable";
+import { CompanyTable, type SortKey, type SortState } from "@/components/companies/CompanyTable";
 import { CompanyForm } from "@/components/companies/CompanyForm";
+import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Search, ChevronDown, ChevronUp } from "lucide-react";
-import { computePlacementStatus } from "@/lib/utils";
-import type { Company, PlacementStatus } from "@/types/database";
-
-type SortKey = "name" | "registration_deadline" | "oa" | "interview" | "ctc" | "status";
+import { Plus, Search, X } from "lucide-react";
+import { PHASES, phaseMeta, phaseRank, resolvePhase, isPhase, type Phase } from "@/lib/phase";
+import { parseCtcToNumber } from "@/lib/ctc";
+import type { Company } from "@/types/database";
 
 const Companies = () => {
   const { canEdit } = useAuth();
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<PlacementStatus | "all">("all");
-  const [sortBy, setSortBy] = useState<SortKey>("registration_deadline");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  useEffect(() => {
-    fetchCompanies();
-  }, []);
+  /**
+   * Filter and sort state lives in the URL. The home page has always linked to
+   * `/companies?phase=registration_open`, but nothing here read the query
+   * string, so that link silently landed on an unfiltered list. URL state also
+   * makes a filtered view shareable and survives a back navigation.
+   */
+  const [searchParams, setSearchParams] = useSearchParams();
+  const search = searchParams.get("q") ?? "";
+  const phaseParam = searchParams.get("phase");
+  const phaseFilter: Phase | "all" = isPhase(phaseParam) ? phaseParam : "all";
+  const sort: SortState = {
+    key: (searchParams.get("sort") as SortKey) || "registration_deadline",
+    direction: searchParams.get("dir") === "asc" ? "asc" : "desc",
+  };
 
-  const fetchCompanies = async () => {
-    try {
+  const setParam = (key: string, value: string | null) => {
+    const next = new URLSearchParams(searchParams);
+    if (!value || value === "all") next.delete(key);
+    else next.set(key, value);
+    setSearchParams(next, { replace: true });
+  };
+
+  const handleSortChange = (key: SortKey) => {
+    const next = new URLSearchParams(searchParams);
+    next.set("sort", key);
+    // Clicking the active column flips direction; a new column starts
+    // descending, which is what you want for dates and money.
+    next.set("dir", sort.key === key && sort.direction === "desc" ? "asc" : "desc");
+    setSearchParams(next, { replace: true });
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
       const { data, error } = await supabase
         .from("companies")
         .select("*")
         .order("created_at", { ascending: false });
-
-      if (error) throw error;
+      if (cancelled) return;
+      if (error) console.error("Error fetching companies:", error);
       setCompanies((data ?? []) as Company[]);
-    } catch (error) {
-      console.error("Error fetching companies:", error);
-    } finally {
       setLoading(false);
-    }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const refetch = async () => {
+    const { data } = await supabase
+      .from("companies")
+      .select("*")
+      .order("created_at", { ascending: false });
+    setCompanies((data ?? []) as Company[]);
   };
 
-  const filteredCompanies = companies.filter((company) => {
-    const matchesSearch = company.name.toLowerCase().includes(search.toLowerCase()) ||
-      company.roles?.some((role) => role.toLowerCase().includes(search.toLowerCase()));
-    const matchesStatus = statusFilter === "all" || company.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  const visible = useMemo(() => {
+    const term = search.trim().toLowerCase();
 
-  const sortedCompanies = useMemo(() => {
-    const safeDate = (v?: string | null) => (v ? new Date(v).getTime() : 0);
-    const parseCTC = (s?: string | null) => {
-      if (!s) return 0;
-      const m = s.match(/([\d,.]+)/);
-      if (!m) return 0;
-      // remove commas and parse
-      return parseFloat(m[1].replace(/,/g, "")) || 0;
+    const filtered = companies.filter((company) => {
+      const matchesSearch =
+        !term ||
+        company.name.toLowerCase().includes(term) ||
+        company.roles?.some((role) => role.toLowerCase().includes(term)) ||
+        company.job_location?.toLowerCase().includes(term);
+
+      // Filter on the *derived* phase, the same value the chip renders. The
+      // old code filtered on the raw four-value status column while the table
+      // displayed the seven-value computed one, so a row could read "OA done"
+      // and match only the "Upcoming" filter.
+      const matchesPhase = phaseFilter === "all" || resolvePhase(company) === phaseFilter;
+
+      return matchesSearch && matchesPhase;
+    });
+
+    const direction = sort.direction === "asc" ? 1 : -1;
+    const time = (value?: string | null) => (value ? new Date(value).getTime() : null);
+
+    // Rows with no value sort last in both directions - a company with no OA
+    // date is not "the earliest OA", which is what treating null as 0 implied.
+    const compare = (a: number | string | null, b: number | string | null) => {
+      if (a === null && b === null) return 0;
+      if (a === null) return 1;
+      if (b === null) return -1;
+      if (typeof a === "string" && typeof b === "string") return direction * a.localeCompare(b);
+      return direction * ((a as number) - (b as number));
     };
 
-    const list = [...filteredCompanies];
-    const now = new Date();
-    const dir = sortDir === 'asc' ? 1 : -1;
-    const statusOrder = [
-      'completed',
-      'interviews_done',
-      'oa_done',
-      'ppt_done',
-      'registration_done',
-      'registration_pending',
-      'ongoing',
-      'upcoming',
-      'cancelled',
-    ];
+    const key = sort.key;
+    return [...filtered].sort((a, b) => {
+      switch (key) {
+        case "name":
+          return compare(a.name, b.name);
+        case "registration_deadline":
+          return compare(time(a.registration_deadline), time(b.registration_deadline));
+        case "oa_datetime":
+          return compare(time(a.oa_datetime), time(b.oa_datetime));
+        case "interview_datetime":
+          return compare(time(a.interview_datetime), time(b.interview_datetime));
+        case "offered_ctc":
+          return compare(parseCtcToNumber(a.offered_ctc), parseCtcToNumber(b.offered_ctc));
+        case "cgpa_cutoff":
+          return compare(a.cgpa_cutoff ?? null, b.cgpa_cutoff ?? null);
+        case "phase":
+          return compare(phaseRank(resolvePhase(a)), phaseRank(resolvePhase(b)));
+        default:
+          return 0;
+      }
+    });
+  }, [companies, search, phaseFilter, sort.key, sort.direction]);
 
-    if (sortBy === 'name') return list.sort((a, b) => dir * a.name.localeCompare(b.name));
-
-    if (sortBy === 'registration_deadline') return list.sort((a, b) => dir * (safeDate(a.registration_deadline) - safeDate(b.registration_deadline)));
-
-    if (sortBy === 'oa') return list.sort((a, b) => dir * (safeDate(a.oa_datetime) - safeDate(b.oa_datetime)));
-
-    if (sortBy === 'interview') return list.sort((a, b) => dir * (safeDate(a.interview_datetime) - safeDate(b.interview_datetime)));
-
-    if (sortBy === 'ctc') return list.sort((a, b) => dir * (parseCTC(a.offered_ctc) - parseCTC(b.offered_ctc)));
-
-    if (sortBy === 'status') {
-      return list.sort((a, b) => {
-        const aStatus = computePlacementStatus(a);
-        const bStatus = computePlacementStatus(b);
-
-        // registration done/pending logic
-        const regA = a.registration_deadline ? new Date(a.registration_deadline) : null;
-        const regB = b.registration_deadline ? new Date(b.registration_deadline) : null;
-        const aKey = aStatus === 'upcoming' && regA ? (now > regA ? 'registration_done' : 'registration_pending') : aStatus;
-        const bKey = bStatus === 'upcoming' && regB ? (now > regB ? 'registration_done' : 'registration_pending') : bStatus;
-
-        const aIndex = statusOrder.indexOf(aKey as string);
-        const bIndex = statusOrder.indexOf(bKey as string);
-        if (aIndex === -1 && bIndex === -1) return 0;
-        if (aIndex === -1) return 1 * dir;
-        if (bIndex === -1) return -1 * dir;
-        return dir * (aIndex - bIndex);
-      });
-    }
-    return list;
-  }, [filteredCompanies, sortBy, sortDir]);
+  const hasFilters = Boolean(search) || phaseFilter !== "all";
 
   return (
     <Layout>
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+      <div className="container py-8 md:py-10">
+        <div className="mb-7 flex flex-col justify-between gap-4 md:flex-row md:items-end">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Companies</h1>
-            <p className="text-muted-foreground mt-1">
-              View all placement companies and their details
+            <h1 className="font-display text-3xl font-semibold tracking-tight">Companies</h1>
+            <p className="mt-1.5 text-sm text-muted-foreground">
+              {loading
+                ? "Loading the drive calendar"
+                : `${visible.length} of ${companies.length} ${companies.length === 1 ? "company" : "companies"}`}
             </p>
           </div>
+
           {canEdit && (
             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
               <DialogTrigger asChild>
                 <Button>
                   <Plus className="mr-2 h-4 w-4" />
-                  Add Company
+                  Add company
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+              <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
                 <DialogHeader>
-                  <DialogTitle>Add New Company</DialogTitle>
+                  <DialogTitle className="font-display">Add a company</DialogTitle>
                 </DialogHeader>
                 <CompanyForm
                   onSuccess={() => {
                     setDialogOpen(false);
-                    fetchCompanies();
+                    void refetch();
                   }}
                 />
               </DialogContent>
@@ -141,60 +171,73 @@ const Companies = () => {
           )}
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-4 mb-6 items-center">
+        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Search companies or roles..."
+              placeholder="Search by company, role or location"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-10"
+              onChange={(event) => setParam("q", event.target.value)}
+              className="pl-9"
+              aria-label="Search companies"
             />
           </div>
-          <div className="flex items-center gap-2">
-            <Select
-              value={statusFilter}
-              onValueChange={(value) => setStatusFilter(value as PlacementStatus | "all")}
-            >
-              <SelectTrigger className="w-full sm:w-40">
-                <SelectValue placeholder="Filter by status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="upcoming">Upcoming</SelectItem>
-                <SelectItem value="ongoing">Ongoing</SelectItem>
-                <SelectItem value="completed">Completed</SelectItem>
-                <SelectItem value="cancelled">Cancelled</SelectItem>
-              </SelectContent>
-            </Select>
 
-            <div className="flex items-center gap-2">
-              <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortKey)}>
-                <SelectTrigger className="w-full sm:w-48">
-                  <SelectValue placeholder="Sort by" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="name">Name</SelectItem>
-                  <SelectItem value="status">Status</SelectItem>
-                  <SelectItem value="registration_deadline">Registration Deadline</SelectItem>
-                  <SelectItem value="ctc">CTC</SelectItem>
-                  <SelectItem value="oa">OA Date</SelectItem>
-                  <SelectItem value="interview">Interview Date</SelectItem>
-                </SelectContent>
-              </Select>
-              <button
-                type="button"
-                className="inline-flex items-center justify-center h-9 w-9 rounded border bg-muted/10"
-                onClick={() => setSortDir(sortDir === 'desc' ? 'asc' : 'desc')}
-                title="Toggle sort direction"
-              >
-                {sortDir === 'desc' ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-              </button>
-            </div>
-          </div>
+          <Select value={phaseFilter} onValueChange={(value) => setParam("phase", value)}>
+            <SelectTrigger className="sm:w-52" aria-label="Filter by phase">
+              <SelectValue placeholder="All phases" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All phases</SelectItem>
+              {PHASES.map((phase) => (
+                <SelectItem key={phase} value={phase}>
+                  {phaseMeta(phase).label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {hasFilters && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSearchParams(new URLSearchParams(), { replace: true })}
+            >
+              <X className="mr-1.5 h-3.5 w-3.5" />
+              Clear
+            </Button>
+          )}
         </div>
 
-        <CompanyTable companies={sortedCompanies} loading={loading} />
+        <CompanyTable
+          companies={visible}
+          loading={loading}
+          sort={sort}
+          onSortChange={handleSortChange}
+          empty={
+            hasFilters ? (
+              <EmptyState
+                variant="search"
+                title="Nothing matches those filters"
+                description="No company matches this search and phase combination."
+                action={
+                  <Button
+                    variant="outline"
+                    onClick={() => setSearchParams(new URLSearchParams(), { replace: true })}
+                  >
+                    Clear filters
+                  </Button>
+                }
+              />
+            ) : (
+              <EmptyState
+                variant="companies"
+                title="No companies yet"
+                description="Once a drive is scheduled it will show up here."
+              />
+            )
+          }
+        />
       </div>
     </Layout>
   );

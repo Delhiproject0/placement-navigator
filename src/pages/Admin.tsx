@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { toast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { Shield, Users, Building2, Trash } from "lucide-react";
 import {
   AlertDialog,
@@ -67,11 +67,7 @@ const Admin = () => {
       setUsers(usersWithRoles);
     } catch (error) {
       console.error("Error fetching users:", error);
-      toast({
-        title: "Error",
-        description: "Failed to fetch users",
-        variant: "destructive",
-      });
+      toast.error("Failed to fetch users");
     } finally {
       setLoading(false);
     }
@@ -107,17 +103,10 @@ const Admin = () => {
         prev.map((u) => (u.user_id === userId ? { ...u, role: newRole } : u))
       );
 
-      toast({
-        title: "Success",
-        description: "User role updated successfully",
-      });
+      toast.success("User role updated successfully");
     } catch (error) {
       console.error("Error updating role:", error);
-      toast({
-        title: "Error",
-        description: "Failed to update user role",
-        variant: "destructive",
-      });
+      toast.error("Failed to update user role");
     }
   };
 
@@ -137,10 +126,10 @@ const Admin = () => {
       // update UI
       setUsers((prev) => prev.filter((u) => u.user_id !== userId));
 
-      toast({ title: "Success", description: "User removed from system" });
+      toast.success("User removed from system");
     } catch (error) {
       console.error("Error deleting user:", error);
-      toast({ title: "Error", description: errorMessage(error, 'Failed to delete user'), variant: "destructive" });
+      toast.error(errorMessage(error, 'Failed to delete user'));
     } finally {
       setDeletingUserId(null);
     }

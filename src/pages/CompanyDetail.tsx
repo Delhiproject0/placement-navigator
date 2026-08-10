@@ -3,10 +3,11 @@ import { useParams, Link } from "react-router-dom";
 import { format } from "date-fns";
 import { formatInISTHuman } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
-import { toast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Layout } from "@/components/layout/Layout";
-import { StatusBadge } from "@/components/companies/StatusBadge";
+import { PhaseChip } from "@/components/companies/PhaseChip";
+import { resolvePhase } from "@/lib/phase";
 import { CompanyForm } from "@/components/companies/CompanyForm";
 import { ExperienceForm } from "@/components/companies/ExperienceForm";
 import { QuestionForm } from "@/components/companies/QuestionForm";
@@ -59,10 +60,10 @@ function ExperienceEditForm({ experience, onCancel, onSaved }: { experience: Int
         })
         .eq("id", experience.id);
       if (error) throw error;
-      toast({ title: "Success", description: "Experience updated" });
+      toast.success("Experience updated");
       onSaved();
     } catch (err) {
-      toast({ title: "Error", description: errorMessage(err, 'Failed to update'), variant: "destructive" });
+      toast.error(errorMessage(err, 'Failed to update'));
     } finally {
       setLoading(false);
     }
@@ -124,10 +125,10 @@ function QuestionEditForm({ question, onCancel, onSaved }: { question: Interview
         })
         .eq("id", question.id);
       if (error) throw error;
-      toast({ title: "Success", description: "Question updated" });
+      toast.success("Question updated");
       onSaved();
     } catch (err) {
-      toast({ title: "Error", description: errorMessage(err, 'Failed to update'), variant: "destructive" });
+      toast.error(errorMessage(err, 'Failed to update'));
     } finally {
       setLoading(false);
     }
@@ -341,7 +342,7 @@ const CompanyDetail = () => {
                     <div>
                       <CardTitle className="text-2xl">{company.name}</CardTitle>
                       <div className="flex items-center gap-2 mt-2">
-                        <StatusBadge status={company.status} />
+                        <PhaseChip phase={resolvePhase(company)} />
                         {company.website_url && (
                           <Button variant="ghost" size="sm" asChild>
                             <a href={company.website_url} target="_blank" rel="noopener noreferrer">
@@ -508,7 +509,7 @@ const CompanyDetail = () => {
                                     </AlertDialogHeader>
                                     <AlertDialogFooter>
                                       <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                      <AlertDialogAction disabled={processingId === exp.id} onClick={async () => { setProcessingId(exp.id); try { const { error } = await supabase.from('interview_experiences').delete().eq('id', exp.id); if (error) throw error; fetchExperiences(); toast({ title: 'Deleted', description: 'Experience removed' }); } catch (err) { toast({ title: 'Error', description: errorMessage(err, 'Failed to delete'), variant: 'destructive' }); } finally { setProcessingId(null); } }}>Delete</AlertDialogAction>
+                                      <AlertDialogAction disabled={processingId === exp.id} onClick={async () => { setProcessingId(exp.id); try { const { error } = await supabase.from('interview_experiences').delete().eq('id', exp.id); if (error) throw error; fetchExperiences(); toast.success("Deleted", { description: 'Experience removed' }); } catch (err) { toast.error(errorMessage(err, 'Failed to delete')); } finally { setProcessingId(null); } }}>Delete</AlertDialogAction>
                                     </AlertDialogFooter>
                                   </AlertDialogContent>
                                 </AlertDialog>
@@ -619,7 +620,7 @@ const CompanyDetail = () => {
                                     </AlertDialogHeader>
                                     <AlertDialogFooter>
                                       <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                      <AlertDialogAction disabled={processingId === q.id} onClick={async () => { setProcessingId(q.id); try { const { error } = await supabase.from('interview_questions').delete().eq('id', q.id); if (error) throw error; fetchQuestions(); toast({ title: 'Deleted', description: 'Question removed' }); } catch (err) { toast({ title: 'Error', description: errorMessage(err, 'Failed to delete'), variant: 'destructive' }); } finally { setProcessingId(null); } }}>Delete</AlertDialogAction>
+                                      <AlertDialogAction disabled={processingId === q.id} onClick={async () => { setProcessingId(q.id); try { const { error } = await supabase.from('interview_questions').delete().eq('id', q.id); if (error) throw error; fetchQuestions(); toast.success("Deleted", { description: 'Question removed' }); } catch (err) { toast.error(errorMessage(err, 'Failed to delete')); } finally { setProcessingId(null); } }}>Delete</AlertDialogAction>
                                     </AlertDialogFooter>
                                   </AlertDialogContent>
                                 </AlertDialog>
