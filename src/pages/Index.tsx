@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ArrowRight, Building2, Calendar, TrendingUp, Users } from "lucide-react";
 import type { Company } from "@/types/database";
-import { computePlacementStatus } from "@/lib/utils";
 
 const Index = () => {
   const [recentCompanies, setRecentCompanies] = useState<Company[]>([]);

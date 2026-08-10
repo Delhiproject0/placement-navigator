@@ -17,10 +17,12 @@ export type Database = {
       companies: {
         Row: {
           bond_details: string | null
+          cgpa_cutoff: number | null
           created_at: string
           ctc_distribution: string | null
           description: string | null
           eligibility_criteria: string | null
+          external_form: string | null
           id: string
           interview_datetime: string | null
           job_location: string | null
@@ -30,6 +32,7 @@ export type Database = {
           offered_ctc: string | null
           people_selected: number | null
           ppt_datetime: string | null
+          registration_deadline: string | null
           roles: string[] | null
           status: Database["public"]["Enums"]["placement_status"]
           updated_at: string
@@ -38,10 +41,12 @@ export type Database = {
         }
         Insert: {
           bond_details?: string | null
+          cgpa_cutoff?: number | null
           created_at?: string
           ctc_distribution?: string | null
           description?: string | null
           eligibility_criteria?: string | null
+          external_form?: string | null
           id?: string
           interview_datetime?: string | null
           job_location?: string | null
@@ -51,6 +56,7 @@ export type Database = {
           offered_ctc?: string | null
           people_selected?: number | null
           ppt_datetime?: string | null
+          registration_deadline?: string | null
           roles?: string[] | null
           status?: Database["public"]["Enums"]["placement_status"]
           updated_at?: string
@@ -59,10 +65,12 @@ export type Database = {
         }
         Update: {
           bond_details?: string | null
+          cgpa_cutoff?: number | null
           created_at?: string
           ctc_distribution?: string | null
           description?: string | null
           eligibility_criteria?: string | null
+          external_form?: string | null
           id?: string
           interview_datetime?: string | null
           job_location?: string | null
@@ -72,6 +80,7 @@ export type Database = {
           offered_ctc?: string | null
           people_selected?: number | null
           ppt_datetime?: string | null
+          registration_deadline?: string | null
           roles?: string[] | null
           status?: Database["public"]["Enums"]["placement_status"]
           updated_at?: string

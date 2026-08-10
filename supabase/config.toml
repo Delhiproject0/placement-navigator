@@ -1,1 +1,57 @@
-project_id = "faynpnofvegarourkykh"
+# The live project. The previous value here ("faynpnofvegarourkykh") pointed at
+# a project that no longer exists - it is NXDOMAIN - which is why the keep-alive
+# workflow had been failing. The real ref was recovered from the deployed bundle.
+project_id = "jwaqisnpxkavkkjzvutl"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 17
+
+[db.migrations]
+enabled = true
+
+[studio]
+enabled = true
+port = 54323
+
+# Local-only mail catcher, so signup/reset flows are testable without SMTP.
+[inbucket]
+enabled = true
+port = 54324
+
+[auth]
+enabled = true
+site_url = "http://localhost:8080"
+additional_redirect_urls = [
+  "http://localhost:8080",
+  "https://placements.dileepadari.dev",
+  "https://placement-navigator.vercel.app",
+]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 10
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = true
+# Local dev only. Production has mailer_autoconfirm on and no SMTP configured -
+# see DEVDOC.md, password reset cannot deliver until SMTP is set up.
+enable_confirmations = false
+
+[functions.placements]
+# We verify the caller's JWT inside the function so we can return structured
+# JSON errors instead of Kong's bare 401, and so unauthenticated routes like
+# the ICS calendar feed can be served from the same function.
+verify_jwt = false
+
+[analytics]
+enabled = false

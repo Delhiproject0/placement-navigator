@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "@/hooks/use-toast";
 import { Building2, Loader2 } from "lucide-react";
+import { errorMessage } from "@/lib/errors";
 
 const Auth = () => {
   const [searchParams] = useSearchParams();
@@ -58,10 +59,10 @@ const Auth = () => {
         });
         navigate("/");
       }
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: "Error",
-        description: error.message,
+        description: errorMessage(error),
         variant: "destructive",
       });
     } finally {

@@ -12,13 +12,15 @@ import { Plus, Search, ChevronDown, ChevronUp } from "lucide-react";
 import { computePlacementStatus } from "@/lib/utils";
 import type { Company, PlacementStatus } from "@/types/database";
 
+type SortKey = "name" | "registration_deadline" | "oa" | "interview" | "ctc" | "status";
+
 const Companies = () => {
   const { canEdit } = useAuth();
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<PlacementStatus | "all">("all");
-  const [sortBy, setSortBy] = useState<"name" | "registration_deadline" | "oa" | "interview" | "ctc" | "status">("registration_deadline");
+  const [sortBy, setSortBy] = useState<SortKey>("registration_deadline");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [dialogOpen, setDialogOpen] = useState(false);
 
@@ -34,14 +36,7 @@ const Companies = () => {
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      // ensure new fields exist to satisfy Company type
-      const anyData = (data || []) as any[];
-      const normalized = anyData.map((d) => ({
-        ...d,
-        registration_deadline: d.registration_deadline ?? null,
-        cgpa_cutoff: d.cgpa_cutoff ?? null,
-      }));
-      setCompanies(normalized);
+      setCompanies((data ?? []) as Company[]);
     } catch (error) {
       console.error("Error fetching companies:", error);
     } finally {
@@ -93,8 +88,8 @@ const Companies = () => {
 
     if (sortBy === 'status') {
       return list.sort((a, b) => {
-        const aStatus = computePlacementStatus(a as any);
-        const bStatus = computePlacementStatus(b as any);
+        const aStatus = computePlacementStatus(a);
+        const bStatus = computePlacementStatus(b);
 
         // registration done/pending logic
         const regA = a.registration_deadline ? new Date(a.registration_deadline) : null;
@@ -174,7 +169,7 @@ const Companies = () => {
             </Select>
 
             <div className="flex items-center gap-2">
-              <Select value={sortBy} onValueChange={(v) => setSortBy(v as any)}>
+              <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortKey)}>
                 <SelectTrigger className="w-full sm:w-48">
                   <SelectValue placeholder="Sort by" />
                 </SelectTrigger>

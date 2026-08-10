@@ -23,5 +23,17 @@ dist-ssr
 *.sln
 *.sw?
 
+# Every .env variant except the committed template. The previous two lines
+# missed .env.local and .env.production, which Vite reads happily.
 .env
-.env.*.local
+.env.*
+!.env.example
+
+# Supabase CLI local state
+supabase/.temp
+supabase/.branches
+
+# Test output
+coverage
+playwright-report
+test-results

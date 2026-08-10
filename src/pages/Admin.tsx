@@ -20,7 +20,8 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
 } from "@/components/ui/alert-dialog";
-import type { Profile, UserRole } from "@/types/database";
+import type { Profile } from "@/types/database";
+import { errorMessage } from "@/lib/errors";
 
 type AppRole = "admin" | "editor" | "viewer";
 
@@ -137,9 +138,9 @@ const Admin = () => {
       setUsers((prev) => prev.filter((u) => u.user_id !== userId));
 
       toast({ title: "Success", description: "User removed from system" });
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error deleting user:", error);
-      toast({ title: "Error", description: error.message || "Failed to delete user", variant: "destructive" });
+      toast({ title: "Error", description: errorMessage(error, 'Failed to delete user'), variant: "destructive" });
     } finally {
       setDeletingUserId(null);
     }

@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Building2, LogOut, Settings, User } from "lucide-react";
+import { Building2, LogOut } from "lucide-react";
 
 export const Header = () => {
   const { user, role, signOut, loading } = useAuth();

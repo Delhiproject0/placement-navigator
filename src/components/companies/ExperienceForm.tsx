@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
+import { errorMessage } from "@/lib/errors";
 
 interface ExperienceFormProps {
   companyId: string;
@@ -46,10 +47,10 @@ export const ExperienceForm = ({ companyId, onSuccess }: ExperienceFormProps) =>
 
       toast({ title: "Success", description: "Experience shared successfully" });
       onSuccess();
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: "Error",
-        description: error.message,
+        description: errorMessage(error),
         variant: "destructive",
       });
     } finally {

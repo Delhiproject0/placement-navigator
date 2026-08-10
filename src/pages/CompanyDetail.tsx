@@ -30,7 +30,8 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
 } from "@/components/ui/alert-dialog";
-import type { Company, InterviewExperience, InterviewQuestion } from "@/types/database";
+import type { Company, InterviewExperience, InterviewQuestion, Profile } from "@/types/database";
+import { errorMessage } from "@/lib/errors";
 
 // Inline edit form for experiences
 function ExperienceEditForm({ experience, onCancel, onSaved }: { experience: InterviewExperience; onCancel: () => void; onSaved: () => void }) {
@@ -60,8 +61,8 @@ function ExperienceEditForm({ experience, onCancel, onSaved }: { experience: Int
       if (error) throw error;
       toast({ title: "Success", description: "Experience updated" });
       onSaved();
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message || "Failed to update", variant: "destructive" });
+    } catch (err) {
+      toast({ title: "Error", description: errorMessage(err, 'Failed to update'), variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -125,8 +126,8 @@ function QuestionEditForm({ question, onCancel, onSaved }: { question: Interview
       if (error) throw error;
       toast({ title: "Success", description: "Question updated" });
       onSaved();
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message || "Failed to update", variant: "destructive" });
+    } catch (err) {
+      toast({ title: "Error", description: errorMessage(err, 'Failed to update'), variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -166,7 +167,7 @@ const CompanyDetail = () => {
   const [company, setCompany] = useState<Company | null>(null);
   const [experiences, setExperiences] = useState<InterviewExperience[]>([]);
   const [questions, setQuestions] = useState<InterviewQuestion[]>([]);
-  const [selectedProfiles, setSelectedProfiles] = useState<any[]>([]);
+  const [selectedProfiles, setSelectedProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [experienceDialogOpen, setExperienceDialogOpen] = useState(false);
@@ -187,6 +188,10 @@ const CompanyDetail = () => {
   }, [id]);
 
   const fetchCompany = async () => {
+    if (!id) {
+      setLoading(false);
+      return;
+    }
     try {
       const { data, error } = await supabase
         .from("companies")
@@ -195,12 +200,14 @@ const CompanyDetail = () => {
         .maybeSingle();
 
       if (error) throw error;
-      const anyData = data as any;
-      setCompany({
-        ...anyData,
-        registration_deadline: anyData.registration_deadline ?? null,
-        cgpa_cutoff: anyData.cgpa_cutoff ?? null,
-      });
+      // maybeSingle() returns null for an id that doesn't exist. Without this
+      // guard the property reads below dereference null, and the resulting
+      // TypeError gets swallowed by the catch.
+      if (!data) {
+        setCompany(null);
+        return;
+      }
+      setCompany(data as Company);
     } catch (error) {
       console.error("Error fetching company:", error);
     } finally {
@@ -209,6 +216,7 @@ const CompanyDetail = () => {
   };
 
   const fetchExperiences = async () => {
+    if (!id) return;
     try {
       const { data, error } = await supabase
         .from("interview_experiences")
@@ -224,6 +232,7 @@ const CompanyDetail = () => {
   };
 
   const fetchSelectedProfiles = async () => {
+    if (!id) return;
     try {
       // Get user_ids from interview_experiences where result indicates selected
       const { data: selData, error: selErr } = await supabase
@@ -235,7 +244,9 @@ const CompanyDetail = () => {
 
       if (selErr) throw selErr;
 
-      const userIds = Array.from(new Set((selData || []).map((r: any) => r.user_id))).filter(Boolean);
+      const userIds = Array.from(new Set((selData || []).map((r) => r.user_id))).filter(
+        (uid): uid is string => uid !== null,
+      );
 
       if (userIds.length === 0) {
         setSelectedProfiles([]);
@@ -255,6 +266,7 @@ const CompanyDetail = () => {
   };
 
   const fetchQuestions = async () => {
+    if (!id) return;
     try {
       const { data, error } = await supabase
         .from("interview_questions")
@@ -496,7 +508,7 @@ const CompanyDetail = () => {
                                     </AlertDialogHeader>
                                     <AlertDialogFooter>
                                       <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                      <AlertDialogAction onClick={async () => { setProcessingId(exp.id); try { const { error } = await supabase.from('interview_experiences').delete().eq('id', exp.id); if (error) throw error; fetchExperiences(); toast({ title: 'Deleted', description: 'Experience removed' }); } catch (err: any) { toast({ title: 'Error', description: err.message || 'Failed to delete', variant: 'destructive' }); } finally { setProcessingId(null); } }}>Delete</AlertDialogAction>
+                                      <AlertDialogAction disabled={processingId === exp.id} onClick={async () => { setProcessingId(exp.id); try { const { error } = await supabase.from('interview_experiences').delete().eq('id', exp.id); if (error) throw error; fetchExperiences(); toast({ title: 'Deleted', description: 'Experience removed' }); } catch (err) { toast({ title: 'Error', description: errorMessage(err, 'Failed to delete'), variant: 'destructive' }); } finally { setProcessingId(null); } }}>Delete</AlertDialogAction>
                                     </AlertDialogFooter>
                                   </AlertDialogContent>
                                 </AlertDialog>
@@ -607,7 +619,7 @@ const CompanyDetail = () => {
                                     </AlertDialogHeader>
                                     <AlertDialogFooter>
                                       <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                      <AlertDialogAction onClick={async () => { setProcessingId(q.id); try { const { error } = await supabase.from('interview_questions').delete().eq('id', q.id); if (error) throw error; fetchQuestions(); toast({ title: 'Deleted', description: 'Question removed' }); } catch (err: any) { toast({ title: 'Error', description: err.message || 'Failed to delete', variant: 'destructive' }); } finally { setProcessingId(null); } }}>Delete</AlertDialogAction>
+                                      <AlertDialogAction disabled={processingId === q.id} onClick={async () => { setProcessingId(q.id); try { const { error } = await supabase.from('interview_questions').delete().eq('id', q.id); if (error) throw error; fetchQuestions(); toast({ title: 'Deleted', description: 'Question removed' }); } catch (err) { toast({ title: 'Error', description: errorMessage(err, 'Failed to delete'), variant: 'destructive' }); } finally { setProcessingId(null); } }}>Delete</AlertDialogAction>
                                     </AlertDialogFooter>
                                   </AlertDialogContent>
                                 </AlertDialog>
@@ -718,7 +730,7 @@ const CompanyDetail = () => {
                     <div className="flex flex-col gap-2">
                       {selectedProfiles.map((p) => (
                         <div key={p.id} className="flex items-center gap-3">
-                          <img src={p.avatar_url || '/placeholder.svg'} alt={p.full_name || p.email} className="h-8 w-8 rounded-full object-cover bg-muted" />
+                          <img src={p.avatar_url || '/placeholder.svg'} alt={p.full_name ?? p.email ?? 'Selected applicant'} className="h-8 w-8 rounded-full object-cover bg-muted" />
                           <div>
                             <div className="font-medium">{p.full_name || p.email}</div>
                             <div className="text-xs text-muted-foreground">{p.email}</div>

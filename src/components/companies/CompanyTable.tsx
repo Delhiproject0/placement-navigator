@@ -1,9 +1,8 @@
 import { useNavigate } from "react-router-dom";
-import { format } from "date-fns";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "./StatusBadge";
-import { MapPin, Users, ExternalLink } from "lucide-react";
+import { Users, ExternalLink } from "lucide-react";
 import type { Company } from "@/types/database";
 import { computePlacementStatus, formatInISTHuman } from "@/lib/utils";
 
@@ -17,11 +16,6 @@ export const CompanyTable = ({ companies, loading }: CompanyTableProps) => {
   const formatDateTime = (dateTime: string | null) => {
     if (!dateTime) return "-";
     return formatInISTHuman(dateTime);
-  };
-
-  const formatDate = (date: string | null) => {
-    if (!date) return "-";
-    return formatInISTHuman(date).split(',')[0];
   };
 
   // companies are expected to be pre-sorted by parent; render directly
@@ -123,7 +117,7 @@ export const CompanyTable = ({ companies, loading }: CompanyTableProps) => {
                 )}
               </TableCell>
               <TableCell>
-                <StatusBadge status={computePlacementStatus(company as any)} />
+                <StatusBadge status={computePlacementStatus(company)} />
               </TableCell>
               <TableCell className={`text-sm ${isImminent ? 'text-red-600 font-semibold' : ''}`}>{formatDateTime(company.registration_deadline)}</TableCell>
               <TableCell className="text-sm">{formatDateTime(company.ppt_datetime)}</TableCell>

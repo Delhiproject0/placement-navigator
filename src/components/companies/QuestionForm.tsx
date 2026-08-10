@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
+import { errorMessage } from "@/lib/errors";
 
 interface QuestionFormProps {
   companyId: string;
@@ -44,10 +45,10 @@ export const QuestionForm = ({ companyId, onSuccess }: QuestionFormProps) => {
 
       toast({ title: "Success", description: "Question added successfully" });
       onSuccess();
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: "Error",
-        description: error.message,
+        description: errorMessage(error),
         variant: "destructive",
       });
     } finally {

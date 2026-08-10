@@ -4,11 +4,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import type { Company } from "@/types/database";
 import { formatForInputInIST, inputISTToOffsetISOString } from "@/lib/utils";
+import { errorMessage } from "@/lib/errors";
 
 interface CompanyFormProps {
   company?: Company;
@@ -24,11 +24,11 @@ export const CompanyForm = ({ company, onSuccess }: CompanyFormProps) => {
     website_url: company?.website_url || "",
     external_form: company?.external_form || "",
     visit_date: company?.visit_date || "",
-    registration_deadline: company ? formatForInputInIST((company as any).registration_deadline) : "",
+    registration_deadline: company ? formatForInputInIST(company.registration_deadline) : "",
     cgpa_cutoff: company?.cgpa_cutoff?.toString() || "",
-    ppt_datetime: company ? formatForInputInIST((company as any).ppt_datetime) : "",
-    oa_datetime: company ? formatForInputInIST((company as any).oa_datetime) : "",
-    interview_datetime: company ? formatForInputInIST((company as any).interview_datetime) : "",
+    ppt_datetime: company ? formatForInputInIST(company.ppt_datetime) : "",
+    oa_datetime: company ? formatForInputInIST(company.oa_datetime) : "",
+    interview_datetime: company ? formatForInputInIST(company.interview_datetime) : "",
     offered_ctc: company?.offered_ctc || "",
     ctc_distribution: company?.ctc_distribution || "",
     roles: company?.roles?.join(", ") || "",
@@ -68,21 +68,21 @@ export const CompanyForm = ({ company, onSuccess }: CompanyFormProps) => {
       if (company) {
         const { error } = await supabase
           .from("companies")
-          .update(payload as any)
+          .update(payload)
           .eq("id", company.id);
         if (error) throw error;
         toast({ title: "Success", description: "Company updated successfully" });
       } else {
-        const { error } = await supabase.from("companies").insert(payload as any);
+        const { error } = await supabase.from("companies").insert(payload);
         if (error) throw error;
         toast({ title: "Success", description: "Company added successfully" });
       }
 
       onSuccess();
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: "Error",
-        description: error.message,
+        description: errorMessage(error),
         variant: "destructive",
       });
     } finally {

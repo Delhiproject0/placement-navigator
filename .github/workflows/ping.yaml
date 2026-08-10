@@ -1,9 +1,19 @@
 name: Ping Supabase to Prevent Pausing
 
+# Free-tier projects pause after a week of inactivity. This keeps the project
+# warm by making one real query twice a week.
+#
+# The previous version of this workflow had been failing on every run since
+# March 2026: the repository had no Actions secrets defined at all, so
+# ${SUPABASE_URL} expanded to the empty string. It also queried /rest/v1/ bare,
+# which returns a body even for a project that no longer exists - so the
+# assertion could not have caught the real failure either. Both are fixed here:
+# a real table is queried, and the response must parse as a JSON array.
+
 on:
   schedule:
-    # 9:00am (`0, 9`), every day (`*`), every month (`*`), monday and thursday (`1, 4`)
-    - cron: '0 9 * * 1,4'
+    # 09:00 UTC on Monday and Thursday
+    - cron: "0 9 * * 1,4"
   workflow_dispatch:
 
 jobs:
@@ -14,15 +24,28 @@ jobs:
       - name: Ping Supabase via PostgREST
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
-          response=$(curl -s \
-            -X GET "${SUPABASE_URL}/rest/v1/" \
-            -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
-            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}")
-          if [ -z "$response" ]; then
-            echo "Error: empty response when pinging." >&2
+          set -euo pipefail
+
+          if [ -z "${SUPABASE_URL}" ] || [ -z "${SUPABASE_ANON_KEY}" ]; then
+            echo "::error::SUPABASE_URL / SUPABASE_ANON_KEY repository secrets are not set." >&2
             exit 1
           fi
-          echo "Successful ping: $response"
 
+          status=$(curl -sS -o response.json -w '%{http_code}' \
+            "${SUPABASE_URL}/rest/v1/companies?select=id&limit=1" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}")
+
+          if [ "${status}" != "200" ]; then
+            echo "::error::Expected HTTP 200, got ${status}." >&2
+            cat response.json >&2
+            exit 1
+          fi
+
+          # A JSON array is the only shape that proves PostgREST actually served
+          # the table, rather than returning an error object with a 200.
+          jq -e 'type == "array"' response.json > /dev/null
+
+          echo "Ping OK: $(jq -c 'length' response.json) row(s) returned."

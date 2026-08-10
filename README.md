@@ -1,73 +1,95 @@
-# Welcome to your Lovable project
+# PlaceTrack
 
-## Project info
+Placement tracking for IIIT Hyderabad. Companies, schedules, eligibility, and the
+interview experiences and questions students contribute after each drive.
 
-**URL**: https://lovable.dev/projects/358680d3-801a-42a9-8381-8592efd6bb2c
+**Live:** https://placements.dileepadari.dev
 
-## How can I edit this code?
+## What it does
 
-There are several ways of editing your application.
+- **Companies** - the drive calendar: registration deadlines, PPT / OA / interview
+  slots, CGPA cutoffs, CTC breakdowns, roles, bond terms, and how many people were
+  selected. Sortable and filterable, with imminent deadlines called out.
+- **Interview experiences** - round-by-round writeups contributed by students who
+  sat the drive, with difficulty, outcome, and tips.
+- **Interview questions** - a question bank per company, tagged by topic and type.
+- **Documents** - JDs, offer letters, OA question papers and feedback forms, stored
+  on a self-hosted CDN (see [DEVDOC.md](./DEVDOC.md#file-storage)).
+- **Roles** - `viewer` reads, `editor` maintains company data, `admin` also manages
+  users. Enforced by Postgres row-level security, not just the UI.
 
-**Use Lovable**
+## Stack
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/358680d3-801a-42a9-8381-8592efd6bb2c) and start prompting.
+| | |
+|---|---|
+| Frontend | React 18, TypeScript, Vite, React Router 6 |
+| UI | Tailwind CSS, shadcn/ui, Radix primitives |
+| Data | Supabase (Postgres + PostgREST + GoTrue), TanStack Query |
+| Forms | react-hook-form + zod |
+| File storage | Self-hosted CDN at `mystorage.dileepadari.dev` via a Supabase Edge Function |
+| Hosting | Vercel |
 
-Changes made via Lovable will be committed automatically to this repo.
+## Getting started
 
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
+Requires Node 22+.
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+git clone git@github.com:Dileepadari/placement-navigator.git
+cd placement-navigator
+npm install
+cp .env.example .env    # then fill it in - see below
+npm run dev             # http://localhost:8080
 ```
 
-**Edit a file directly in GitHub**
+### Environment
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+`.env` needs three browser-side values to run the app:
 
-**Use GitHub Codespaces**
+```sh
+VITE_SUPABASE_PROJECT_ID="..."
+VITE_SUPABASE_URL="https://<ref>.supabase.co"
+VITE_SUPABASE_ANON_KEY="..."
+```
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+The anon key is public by design - it ships in the JS bundle, and row-level
+security is what actually protects the data. Three further values
+(`SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD`, `SUPABASE_SERVICE_ROLE_KEY`)
+are only needed to run migrations or deploy edge functions; they have no `VITE_`
+prefix, so they are never bundled. [DEVDOC.md](./DEVDOC.md#environment) says where
+each one comes from.
 
-## What technologies are used for this project?
+## Scripts
 
-This project is built with:
+| Script | Does |
+|---|---|
+| `npm run dev` | Dev server on :8080 |
+| `npm run build` | Production build |
+| `npm run lint` | ESLint |
+| `npm run typecheck` | `tsc --noEmit` |
+| `npm test` | Unit and component tests |
+| `npm run test:e2e` | Playwright end-to-end |
+| `npm run db:push` | Apply migrations to the linked project |
+| `npm run gen:types` | Regenerate `src/integrations/supabase/types.ts` from the live schema |
+| `npm run fn:deploy` | Deploy the `placements` edge function |
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+## Database
 
-## How can I deploy this project?
+Migrations live in `supabase/migrations/` and are applied in filename order.
+`supabase/backups/` holds data exports taken before schema changes.
 
-Simply open [Lovable](https://lovable.dev/projects/358680d3-801a-42a9-8381-8592efd6bb2c) and click on Share -> Publish.
+```sh
+npm run db:push      # apply to the linked project
+npm run gen:types    # then always regenerate types
+```
 
-## Can I connect a custom domain to my Lovable project?
+Never hand-edit `src/integrations/supabase/types.ts` - regenerate it. See
+[supabase/README.md](./supabase/README.md) for how to add a migration safely.
 
-Yes, you can!
+## Contributing
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+Branch off `main`, open a PR. CI runs lint, typecheck, tests and the build; all
+four must pass. See [CONTRIBUTING.md](./CONTRIBUTING.md).
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+## License
+
+MIT

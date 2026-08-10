@@ -5,10 +5,25 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-import type { PlacementStatus, Company } from "@/types/database";
+import type { PlacementStatus } from "@/types/database";
+
+/**
+ * The stored `status` column and the displayed status are different
+ * vocabularies: the database enum has four values, this returns seven. So the
+ * input is typed structurally on the stored shape (which only ever carries the
+ * four) rather than on `Company`, whose `status` is the seven-value display
+ * type. That mismatch is what the `as any` at every call site was hiding.
+ */
+export interface PlacementTimings {
+  status: string | null;
+  registration_deadline?: string | null;
+  ppt_datetime?: string | null;
+  oa_datetime?: string | null;
+  interview_datetime?: string | null;
+}
 
 // Compute a placement status from timing fields when status is not explicitly set
-export function computePlacementStatus(company: Pick<Company, 'status' | 'registration_deadline' | 'ppt_datetime' | 'oa_datetime' | 'interview_datetime'>): PlacementStatus {
+export function computePlacementStatus(company: PlacementTimings): PlacementStatus {
   // honor explicit cancelled status
   if (company.status === 'cancelled') return 'cancelled';
 
@@ -39,8 +54,6 @@ export function computePlacementStatus(company: Pick<Company, 'status' | 'regist
 }
 
 // Date/time helpers for IST (Asia/Kolkata)
-function pad(n: number) { return n < 10 ? `0${n}` : `${n}`; }
-
 export function formatForInputInIST(iso?: string | null) {
   if (!iso) return "";
   const d = new Date(iso);
