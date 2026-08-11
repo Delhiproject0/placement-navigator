@@ -460,3 +460,113 @@ describe.runIf(!process.env.SKIP_API_TESTS)("calendar feed", () => {
     expect((await api("/calendar/token")).status).toBe(401);
   });
 });
+
+describe.runIf(!process.env.SKIP_API_TESTS)("admin surface", () => {
+  it.runIf(stackUp)("keeps every admin route closed to a viewer", async () => {
+    const student = await login("student@iiit.ac.in");
+    for (const path of ["/admin/audit", "/admin/settings", "/admin/announcements", "/admin/contributions"]) {
+      expect((await api(path)).status, `${path} anon`).toBe(401);
+      expect((await api(path, {}, student.access_token)).status, `${path} viewer`).toBe(403);
+    }
+  });
+
+  it.runIf(stackUp)("attributes an audited write to the person who made it", async () => {
+    // The triggers fire on a connection that authenticates as the service role
+    // for everyone, so without the actor header every entry would read as
+    // "outside the app" and the log would be useless.
+    const admin = await login("admin@iiit.ac.in");
+    const editor = await login("editor@iiit.ac.in");
+
+    const name = `Audit Co ${Date.now()}`;
+    const created = await api(
+      "/companies",
+      { method: "POST", body: JSON.stringify({ name }) },
+      editor.access_token,
+    );
+    expect(created.status).toBe(201);
+    const id = (created.body as unknown as { company: { id: string } }).company.id;
+
+    const log = await api("/admin/audit?per_page=10", {}, admin.access_token);
+    const entries = (log.body as unknown as { entries: Array<Record<string, unknown>> }).entries;
+    const entry = entries.find((row) => row.record_id === id && row.action === "INSERT");
+
+    expect(entry, "the insert was not recorded").toBeTruthy();
+    expect(entry!.actor_email).toBe("editor@iiit.ac.in");
+
+    await api(`/companies/${id}`, { method: "DELETE" }, admin.access_token);
+  });
+
+  it.runIf(stackUp)("restricts signup to the configured domains", async () => {
+    const admin = await login("admin@iiit.ac.in");
+
+    await api(
+      "/admin/settings",
+      { method: "PATCH", body: JSON.stringify({ signup_allowed_domains: ["iiit.ac.in"] }) },
+      admin.access_token,
+    );
+
+    const outside = await api("/auth/signup", {
+      method: "POST",
+      body: JSON.stringify({ email: `x${Date.now()}@gmail.com`, password: "placement123" }),
+    });
+    expect(outside.status).toBe(403);
+    // A bare "could not create the account" leaves the student with no idea
+    // that the domain is the problem.
+    expect((outside.body as { error: { code: string } }).error.code).toBe("DOMAIN_NOT_ALLOWED");
+
+    const inside = await api("/auth/signup", {
+      method: "POST",
+      body: JSON.stringify({ email: `ok${Date.now()}@iiit.ac.in`, password: "placement123" }),
+    });
+    expect(inside.status).toBe(201);
+
+    // Put it back, or every later signup in the suite depends on ordering.
+    await api(
+      "/admin/settings",
+      { method: "PATCH", body: JSON.stringify({ signup_allowed_domains: [] }) },
+      admin.access_token,
+    );
+  });
+
+  it.runIf(stackUp)("rejects a malformed domain rather than locking everyone out", async () => {
+    const admin = await login("admin@iiit.ac.in");
+    const { status, body } = await api(
+      "/admin/settings",
+      { method: "PATCH", body: JSON.stringify({ signup_allowed_domains: ["not a domain"] }) },
+      admin.access_token,
+    );
+    expect(status).toBe(422);
+    expect((body as { error: { details: Record<string, string> } }).error.details).toHaveProperty(
+      "signup_allowed_domains",
+    );
+  });
+
+  it.runIf(stackUp)("publishes an announcement that the public endpoint then serves", async () => {
+    const admin = await login("admin@iiit.ac.in");
+    const title = `Notice ${Date.now()}`;
+
+    const created = await api(
+      "/admin/announcements",
+      { method: "POST", body: JSON.stringify({ title, severity: "warning" }) },
+      admin.access_token,
+    );
+    expect(created.status).toBe(201);
+    const id = (created.body as unknown as { announcement: { id: string } }).announcement.id;
+
+    // The banner endpoint needs no auth at all.
+    const live = await api("/announcements");
+    expect(live.status).toBe(200);
+    const titles = (live.body as unknown as { announcements: Array<{ title: string }> }).announcements.map(
+      (a) => a.title,
+    );
+    expect(titles).toContain(title);
+
+    await api(`/admin/announcements/${id}`, { method: "DELETE" }, admin.access_token);
+    const after = await api("/announcements");
+    expect(
+      (after.body as unknown as { announcements: Array<{ title: string }> }).announcements.map(
+        (a) => a.title,
+      ),
+    ).not.toContain(title);
+  });
+});

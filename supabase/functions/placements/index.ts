@@ -27,6 +27,7 @@ import * as profile from "./routes/profile.ts";
 import * as tracking from "./routes/tracking.ts";
 import * as calendar from "./routes/calendar.ts";
 import { importCompanies } from "./routes/importer.ts";
+import * as surface from "./routes/adminSurface.ts";
 
 /** Strips the function mount prefix, leaving a leading-slash path. */
 function routePath(pathname: string): string {
@@ -70,6 +71,7 @@ Deno.serve(async (req) => {
     if (method === "GET" && segments[0] === "companies" && segments[2] === "questions") {
       return await contributions.listForCompany("interview_questions", segments[1]);
     }
+    if (method === "GET" && path === "/announcements") return await surface.listLiveAnnouncements();
     if (method === "GET" && path === "/attachments") return await storage.listAttachments(url);
     if (method === "GET" && path === "/file-text") return await storage.handleFileText(url);
 
@@ -142,13 +144,13 @@ Deno.serve(async (req) => {
     if (method === "POST" && path === "/companies") {
       const denied = requireEditor(caller);
       if (denied) return denied;
-      return await companies.createCompany(req);
+      return await companies.createCompany(req, caller!);
     }
     if (segments[0] === "companies" && segments.length === 2) {
       if (method === "PATCH") {
         const denied = requireEditor(caller);
         if (denied) return denied;
-        return await companies.updateCompany(req, segments[1]);
+        return await companies.updateCompany(req, segments[1], caller!);
       }
       if (method === "DELETE") {
         const denied = requireAdmin(caller);
@@ -207,7 +209,7 @@ Deno.serve(async (req) => {
     if (method === "POST" && path === "/import/companies") {
       const denied = requireEditor(caller);
       if (denied) return denied;
-      return await importCompanies(req);
+      return await importCompanies(req, caller!);
     }
 
     // --------------------------------------------------------------- admin
@@ -217,6 +219,23 @@ Deno.serve(async (req) => {
 
       if (method === "GET" && path === "/admin/users") return await admin.listUsers(url);
       if (method === "GET" && path === "/admin/stats") return await admin.stats();
+      if (method === "GET" && path === "/admin/audit") return await surface.listAuditLog(url);
+      if (method === "GET" && path === "/admin/contributions") {
+        return await surface.listAllContributions(url);
+      }
+
+      if (path === "/admin/settings") {
+        if (method === "GET") return await surface.getSettings();
+        if (method === "PATCH") return await surface.updateSettings(req, caller!);
+      }
+
+      if (path === "/admin/announcements") {
+        if (method === "GET") return await surface.listAllAnnouncements();
+        if (method === "POST") return await surface.createAnnouncement(req, caller!);
+      }
+      if (method === "DELETE" && segments[1] === "announcements" && segments[2]) {
+        return await surface.deleteAnnouncement(segments[2], caller!);
+      }
 
       if (segments[1] === "users" && segments[2]) {
         const userId = segments[2];

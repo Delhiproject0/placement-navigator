@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { Layout } from "@/components/layout/Layout";
+import { Seo } from "@/components/Seo";
 import { EmptyState } from "@/components/EmptyState";
 import { Shimmer } from "@/components/skeletons/CompanyTableSkeleton";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,7 @@ const Contributions = () => {
 
   return (
     <Layout>
+      <Seo title="Your contributions" noIndex />
       <div className="container max-w-3xl py-8 md:py-10">
         <div className="mb-7">
           <h1 className="font-display text-3xl font-semibold tracking-tight">Your contributions</h1>

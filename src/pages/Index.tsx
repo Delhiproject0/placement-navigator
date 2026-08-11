@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useCompanies } from "@/hooks/queries";
 import { Layout } from "@/components/layout/Layout";
+import { Seo } from "@/components/Seo";
 import { PhaseChip } from "@/components/companies/PhaseChip";
 import { DeadlinePill } from "@/components/companies/DeadlinePill";
 import { CompanyLogo } from "@/components/companies/CompanyLogo";
@@ -88,6 +89,10 @@ const Index = () => {
 
   return (
     <Layout>
+      <Seo
+        title="PlaceTrack"
+        description="Placement tracking for IIIT Hyderabad - every drive, deadline and interview experience in one place."
+      />
       {/* Hero. Asymmetric and left-aligned rather than a centred block with two
           buttons under it, and typeset in the display face at a size that lets
           the Fraunces WONK forms actually read. */}

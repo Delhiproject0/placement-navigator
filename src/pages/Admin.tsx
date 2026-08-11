@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Building2, FileText, MessageSquareText, Search, Shield, Trash, Users } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
+import { Seo } from "@/components/Seo";
 import { EmptyState } from "@/components/EmptyState";
 import { Shimmer } from "@/components/skeletons/CompanyTableSkeleton";
 import { Button } from "@/components/ui/button";
@@ -10,6 +11,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ModerationPanel } from "@/components/admin/ModerationPanel";
+import { SettingsPanel } from "@/components/admin/SettingsPanel";
+import { AuditPanel } from "@/components/admin/AuditPanel";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -83,6 +88,7 @@ const Admin = () => {
 
   return (
     <Layout>
+      <Seo title="Admin" noIndex />
       <div className="container py-8 md:py-10">
         <div className="mb-7">
           <h1 className="font-display text-3xl font-semibold tracking-tight">Admin</h1>
@@ -96,6 +102,15 @@ const Admin = () => {
           <StatCard icon={MessageSquareText} label="Questions" value={statsQuery.data?.questions} />
         </div>
 
+        <Tabs defaultValue="users">
+          <TabsList>
+            <TabsTrigger value="users">Users</TabsTrigger>
+            <TabsTrigger value="moderation">Moderation</TabsTrigger>
+            <TabsTrigger value="settings">Settings</TabsTrigger>
+            <TabsTrigger value="audit">Audit</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="users" className="mt-5">
         <Card>
           <CardHeader className="flex-row items-center justify-between gap-4 space-y-0">
             <CardTitle className="font-display text-base">
@@ -269,6 +284,20 @@ const Admin = () => {
             )}
           </CardContent>
         </Card>
+          </TabsContent>
+
+          <TabsContent value="moderation" className="mt-5">
+            <ModerationPanel />
+          </TabsContent>
+
+          <TabsContent value="settings" className="mt-5">
+            <SettingsPanel />
+          </TabsContent>
+
+          <TabsContent value="audit" className="mt-5">
+            <AuditPanel />
+          </TabsContent>
+        </Tabs>
       </div>
     </Layout>
   );

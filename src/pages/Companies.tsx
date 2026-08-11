@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useCompanies } from "@/hooks/queries";
 import { Layout } from "@/components/layout/Layout";
+import { Seo } from "@/components/Seo";
 import { CompanyTable, type SortKey, type SortState } from "@/components/companies/CompanyTable";
 import { CompanyForm } from "@/components/companies/CompanyForm";
 import { ImportDialog } from "@/components/companies/ImportDialog";
@@ -136,6 +137,10 @@ const Companies = () => {
 
   return (
     <Layout>
+      <Seo
+        title="Companies"
+        description="Every company visiting IIIT Hyderabad this season, with deadlines, eligibility and packages."
+      />
       <div className="container py-8 md:py-10">
         <div className="mb-7 flex flex-col justify-between gap-4 md:flex-row md:items-end">
           <div>

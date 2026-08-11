@@ -15,6 +15,7 @@ import {
   ZAxis,
 } from "recharts";
 import { Layout } from "@/components/layout/Layout";
+import { Seo } from "@/components/Seo";
 import { ChartCard, ChartTooltip } from "@/components/charts/ChartCard";
 import { EmptyState } from "@/components/EmptyState";
 import { Shimmer } from "@/components/skeletons/CompanyTableSkeleton";
@@ -41,6 +42,10 @@ const Analytics = () => {
   if (isPending) {
     return (
       <Layout>
+      <Seo
+        title="Analytics"
+        description="Package distribution, hiring roles and offer trends across the placement season."
+      />
         <div className="container py-10">
           <Shimmer className="h-9 w-64 rounded-sm" />
           <div className="mt-7 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

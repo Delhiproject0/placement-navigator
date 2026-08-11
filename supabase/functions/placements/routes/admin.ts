@@ -1,6 +1,6 @@
 /** User administration and site statistics. Admin only. */
 
-import { db, type Caller, type Role } from "../context.ts";
+import { db, dbAs, type Caller, type Role } from "../context.ts";
 import { fail, json, readJson, str } from "../http.ts";
 
 const ROLES = new Set<Role>(["admin", "editor", "viewer"]);
@@ -59,7 +59,7 @@ export async function setUserRole(req: Request, userId: string, caller: Caller):
 
   // upsert, not update: a user with no user_roles row previously produced a
   // successful response that had changed nothing at all.
-  const { error } = await db
+  const { error } = await dbAs(caller)
     .from("user_roles")
     .upsert({ user_id: userId, role }, { onConflict: "user_id" });
 

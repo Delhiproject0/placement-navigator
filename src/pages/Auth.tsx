@@ -8,6 +8,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { api, ApiError } from "@/lib/api";
 import { signInSchema, signUpSchema } from "@/lib/schemas";
 import { Layout } from "@/components/layout/Layout";
+import { Seo } from "@/components/Seo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -112,6 +113,10 @@ const Auth = () => {
 
   return (
     <Layout withFooter={false}>
+      <Seo
+        title="Sign in"
+        description="Sign in to contribute interview experiences and track your applications."
+      />
       <div className="relative flex min-h-[calc(100vh-4rem)] items-center justify-center px-5 py-12">
         <div className="bg-dot-grid absolute inset-0 opacity-60" aria-hidden />
         <div

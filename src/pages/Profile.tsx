@@ -5,6 +5,7 @@ import type { z } from "zod";
 import { toast } from "sonner";
 import { KeyRound, Loader2, LogOut } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
+import { Seo } from "@/components/Seo";
 import { AttachmentsPanel } from "@/components/attachments/AttachmentsPanel";
 import { CalendarSubscription } from "@/components/CalendarSubscription";
 import { Button } from "@/components/ui/button";
@@ -84,6 +85,7 @@ const Profile = () => {
 
   return (
     <Layout>
+      <Seo title="Your profile" noIndex />
       <div className="container max-w-3xl py-8 md:py-10">
         <h1 className="font-display text-3xl font-semibold tracking-tight">Your profile</h1>
         <p className="mt-1.5 text-sm text-muted-foreground">

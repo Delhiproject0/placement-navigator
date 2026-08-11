@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { BookmarkX } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
+import { Seo } from "@/components/Seo";
 import { CompanyTable } from "@/components/companies/CompanyTable";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
@@ -18,6 +19,7 @@ const Bookmarks = () => {
 
   return (
     <Layout>
+      <Seo title="Saved companies" noIndex />
       <div className="container py-8 md:py-10">
         <div className="mb-7">
           <h1 className="font-display text-3xl font-semibold tracking-tight">Saved companies</h1>

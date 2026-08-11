@@ -295,6 +295,37 @@ export interface ImportResult {
   failures?: ImportIssue[];
 }
 
+export interface Announcement {
+  id: string;
+  title: string;
+  body: string | null;
+  severity: "info" | "warning" | "critical";
+  pinned: boolean;
+  publish_at: string;
+  expires_at: string | null;
+  author_id: string | null;
+  created_at: string;
+}
+
+export interface AppSettings {
+  id: boolean;
+  signup_allowed_domains: string[];
+  signup_enabled: boolean;
+  updated_at: string;
+}
+
+export interface AuditEntry {
+  id: number;
+  table_name: string;
+  record_id: string | null;
+  action: "INSERT" | "UPDATE" | "DELETE";
+  actor_id: string | null;
+  actor_email: string | null;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+  created_at: string;
+}
+
 export interface AdminUser {
   id: string;
   email: string;
@@ -457,6 +488,42 @@ export const api = {
 
     remove: (id: string) =>
       request<{ success: boolean }>(`/attachments?id=${id}`, { method: "DELETE" }),
+  },
+
+  announcements: {
+    live: () =>
+      request<{ announcements: Announcement[] }>("/announcements", { auth: false }).then(
+        (r) => r.announcements,
+      ),
+    listAll: () =>
+      request<{ announcements: Announcement[] }>("/admin/announcements").then((r) => r.announcements),
+    create: (input: Partial<Announcement>) =>
+      request<{ announcement: Announcement }>("/admin/announcements", { method: "POST", body: input }),
+    remove: (id: string) =>
+      request<{ success: boolean }>(`/admin/announcements/${id}`, { method: "DELETE" }),
+  },
+
+  settings: {
+    get: () => request<{ settings: AppSettings }>("/admin/settings").then((r) => r.settings),
+    update: (input: Partial<AppSettings>) =>
+      request<{ settings: AppSettings }>("/admin/settings", { method: "PATCH", body: input }).then(
+        (r) => r.settings,
+      ),
+  },
+
+  moderation: {
+    contributions: () =>
+      request<{
+        experiences: Array<InterviewExperience & { companies: { id: string; name: string } | null; author: { full_name: string | null; email: string } | null }>;
+        questions: Array<InterviewQuestion & { companies: { id: string; name: string } | null; author: { full_name: string | null; email: string } | null }>;
+      }>("/admin/contributions"),
+  },
+
+  audit: {
+    list: (page = 1) =>
+      request<{ entries: AuditEntry[]; total: number; page: number; per_page: number }>(
+        `/admin/audit?page=${page}`,
+      ),
   },
 
   calendar: {

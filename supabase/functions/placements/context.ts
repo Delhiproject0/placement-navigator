@@ -28,6 +28,21 @@ export const db: SupabaseClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
+/**
+ * A client that tags its requests with the acting user.
+ *
+ * Every connection authenticates as the same service role, so the audit
+ * triggers cannot tell who is behind a write. PostgREST surfaces the request
+ * headers to SQL, so the actor rides along in one - which keeps attribution
+ * working without the routes having to remember to write audit rows.
+ */
+export function dbAs(caller: Caller): SupabaseClient {
+  return createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { headers: { "x-actor-id": caller.id } },
+  });
+}
+
 export type Role = "admin" | "editor" | "viewer";
 
 export interface Caller {

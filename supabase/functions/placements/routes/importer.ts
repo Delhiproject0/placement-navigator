@@ -7,7 +7,7 @@
  * checks becomes a way to write values the form would reject.
  */
 
-import { db } from "../context.ts";
+import { db, dbAs, type Caller } from "../context.ts";
 import { fail, json, readJson, str } from "../http.ts";
 import { pickWritable } from "./companies.ts";
 
@@ -65,7 +65,7 @@ export interface ImportIssue {
   message: string;
 }
 
-export async function importCompanies(req: Request): Promise<Response> {
+export async function importCompanies(req: Request, caller: Caller): Promise<Response> {
   const body = await readJson<{ rows?: Record<string, string>[]; dry_run?: boolean }>(req);
   const rows = body?.rows;
   const dryRun = body?.dry_run !== false;
@@ -134,7 +134,7 @@ export async function importCompanies(req: Request): Promise<Response> {
   const failures: ImportIssue[] = [];
 
   if (toCreate.length) {
-    const { data, error } = await db
+    const { data, error } = await dbAs(caller)
       .from("companies")
       .insert(toCreate.map((entry) => entry.values))
       .select("id");
@@ -147,7 +147,7 @@ export async function importCompanies(req: Request): Promise<Response> {
 
   for (const entry of toUpdate) {
     const id = existing.get((entry.values.name as string).toLowerCase())!;
-    const { error } = await db.from("companies").update(entry.values).eq("id", id);
+    const { error } = await dbAs(caller).from("companies").update(entry.values).eq("id", id);
     if (error) failures.push({ row: entry.row, message: error.message });
     else updated += 1;
   }

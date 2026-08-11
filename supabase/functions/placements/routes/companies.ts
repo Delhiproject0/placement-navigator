@@ -1,6 +1,6 @@
 /** Company CRUD. Reads are public; writes need editor, deletes need admin. */
 
-import { db, type Caller } from "../context.ts";
+import { db, dbAs, type Caller } from "../context.ts";
 import { fail, json, readJson, str } from "../http.ts";
 
 /**
@@ -146,7 +146,7 @@ export async function getCompany(id: string): Promise<Response> {
   return json({ company: data });
 }
 
-export async function createCompany(req: Request): Promise<Response> {
+export async function createCompany(req: Request, caller: Caller): Promise<Response> {
   const body = await readJson<Record<string, unknown>>(req);
   if (!body) return fail(400, "INVALID_BODY", "Expected a JSON body");
 
@@ -154,12 +154,12 @@ export async function createCompany(req: Request): Promise<Response> {
   if (!values.name) errors.name ??= "A company name is required";
   if (Object.keys(errors).length) return fail(422, "VALIDATION_FAILED", "Check the form", errors);
 
-  const { data, error } = await db.from("companies").insert(values).select().single();
+  const { data, error } = await dbAs(caller).from("companies").insert(values).select().single();
   if (error) return fail(500, "INSERT_FAILED", "Could not create the company");
   return json({ company: data }, 201);
 }
 
-export async function updateCompany(req: Request, id: string): Promise<Response> {
+export async function updateCompany(req: Request, id: string, caller: Caller): Promise<Response> {
   const body = await readJson<Record<string, unknown>>(req);
   if (!body) return fail(400, "INVALID_BODY", "Expected a JSON body");
 
@@ -167,7 +167,12 @@ export async function updateCompany(req: Request, id: string): Promise<Response>
   if (Object.keys(errors).length) return fail(422, "VALIDATION_FAILED", "Check the form", errors);
   if (!Object.keys(values).length) return fail(400, "NOTHING_TO_UPDATE", "No changes were supplied");
 
-  const { data, error } = await db.from("companies").update(values).eq("id", id).select().maybeSingle();
+  const { data, error } = await dbAs(caller)
+    .from("companies")
+    .update(values)
+    .eq("id", id)
+    .select()
+    .maybeSingle();
   if (error) return fail(500, "UPDATE_FAILED", "Could not update the company");
   if (!data) return fail(404, "NOT_FOUND", "That company does not exist");
   return json({ company: data });
@@ -197,7 +202,7 @@ export async function deleteCompany(id: string, caller: Caller): Promise<Respons
   const { data: existing } = await db.from("companies").select("name").eq("id", id).maybeSingle();
   if (!existing) return fail(404, "NOT_FOUND", "That company does not exist");
 
-  const { error } = await db.from("companies").delete().eq("id", id);
+  const { error } = await dbAs(caller).from("companies").delete().eq("id", id);
   if (error) return fail(500, "DELETE_FAILED", "Could not delete the company");
 
   console.log(`[audit] ${caller.email} deleted company ${id} (${existing.name})`);

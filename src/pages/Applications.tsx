@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { Layout } from "@/components/layout/Layout";
+import { Seo } from "@/components/Seo";
 import { CompanyLogo } from "@/components/companies/CompanyLogo";
 import { EmptyState } from "@/components/EmptyState";
 import { Shimmer } from "@/components/skeletons/CompanyTableSkeleton";
@@ -30,6 +31,7 @@ const Applications = () => {
   if (isPending) {
     return (
       <Layout>
+      <Seo title="Your applications" noIndex />
         <div className="container py-10">
           <Shimmer className="h-8 w-56 rounded-sm" />
           <div className="mt-7 grid gap-4 md:grid-cols-5">

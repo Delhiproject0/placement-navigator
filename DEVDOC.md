@@ -198,6 +198,20 @@ edge function route.
 
 ---
 
+## Audit trail
+
+Writes to `companies`, `user_roles` and `announcements` are recorded by database
+triggers, not by the API - so an action cannot happen without being logged,
+including one taken through psql or the Supabase dashboard.
+
+Attribution needs care. Every connection authenticates as the same service role,
+so a trigger cannot tell who is behind a write. PostgREST exposes the request's
+headers to SQL, and `dbAs(caller)` in `context.ts` returns a client that attaches
+`x-actor-id`; the trigger reads it from `current_setting('request.headers')`.
+**Any new write to an audited table must use `dbAs(caller)`, not `db`** - using
+the plain client is not an error, it just silently records the change as
+"outside the app".
+
 ## Known operational gaps
 
 - **No SMTP is configured.** Supabase's built-in mailer is limited to project

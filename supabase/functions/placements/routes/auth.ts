@@ -95,6 +95,18 @@ function mapPgError(message: string): Response | null {
   if (message.includes("ACCOUNT_LOCKED")) {
     return fail(429, "ACCOUNT_LOCKED", "Too many failed attempts. Try again in 15 minutes.");
   }
+  // Without these, a student typing a personal address gets a bare "Could not
+  // create the account" and no idea that the domain is the problem.
+  if (message.includes("DOMAIN_NOT_ALLOWED")) {
+    return fail(
+      403,
+      "DOMAIN_NOT_ALLOWED",
+      "Registration is limited to college email addresses. Use your institute address.",
+    );
+  }
+  if (message.includes("SIGNUP_DISABLED")) {
+    return fail(403, "SIGNUP_DISABLED", "New registrations are closed at the moment.");
+  }
   return null;
 }
 
