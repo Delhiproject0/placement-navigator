@@ -28,6 +28,7 @@ import * as tracking from "./routes/tracking.ts";
 import * as calendar from "./routes/calendar.ts";
 import { importCompanies } from "./routes/importer.ts";
 import * as surface from "./routes/adminSurface.ts";
+import * as discussion from "./routes/discussion.ts";
 
 /** Strips the function mount prefix, leaving a leading-slash path. */
 function routePath(pathname: string): string {
@@ -72,6 +73,10 @@ Deno.serve(async (req) => {
       return await contributions.listForCompany("interview_questions", segments[1]);
     }
     if (method === "GET" && path === "/announcements") return await surface.listLiveAnnouncements();
+    if (method === "GET" && path === "/tags") return await discussion.listTags();
+    if (method === "GET" && segments[0] === "companies" && segments[2] === "tags") {
+      return await discussion.getCompanyTags(segments[1]);
+    }
     if (method === "GET" && path === "/attachments") return await storage.listAttachments(url);
     if (method === "GET" && path === "/file-text") return await storage.handleFileText(url);
 
@@ -83,6 +88,32 @@ Deno.serve(async (req) => {
 
     // ------------------------------------------------------------ identified
     const caller: Caller | null = await getCaller(req);
+
+    if (method === "GET" && path === "/comments") return await discussion.listComments(url, caller);
+    if (method === "GET" && path === "/votes") return await discussion.voteSummary(url, caller);
+
+    if (path === "/comments" && method === "POST") {
+      const denied = requireUser(caller);
+      if (denied) return denied;
+      return await discussion.createComment(req, caller!);
+    }
+    if (segments[0] === "comments" && segments[1]) {
+      const denied = requireUser(caller);
+      if (denied) return denied;
+      if (method === "PATCH") return await discussion.updateComment(req, segments[1], caller!);
+      if (method === "DELETE") return await discussion.deleteComment(segments[1], caller!);
+    }
+    if (path === "/votes" && method === "POST") {
+      const denied = requireUser(caller);
+      if (denied) return denied;
+      return await discussion.castVote(req, caller!);
+    }
+
+    if (method === "PUT" && segments[0] === "companies" && segments[2] === "tags") {
+      const denied = requireEditor(caller);
+      if (denied) return denied;
+      return await discussion.setCompanyTags(req, segments[1], caller!);
+    }
 
     if (method === "GET" && path === "/auth/me") {
       const denied = requireUser(caller);

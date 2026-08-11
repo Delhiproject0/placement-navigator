@@ -212,6 +212,26 @@ headers to SQL, and `dbAs(caller)` in `context.ts` returns a client that attache
 the plain client is not an error, it just silently records the change as
 "outside the app".
 
+## Discussion and votes
+
+Comments are one level deep by design: a reply to a reply is attached to the
+same parent by the API, not by the client. Deeper threads read badly on a phone
+and have no natural end.
+
+Deleting a comment is a **soft** delete - the row survives so that replies keep
+their context, but the body is blanked in the database and never sent to the
+client. The `comments_body_length` check is deliberately conditional on
+`is_deleted` for exactly this reason; an unconditional non-empty check makes
+the blanking impossible and deletes fail with a constraint violation.
+
+Editing is the author's alone, including for admins. A moderator removing a
+comment is moderation; a moderator rewriting one is putting words in somebody's
+mouth.
+
+Vote scores are summed on read rather than kept in a counter column. A counter
+drifts the first time a delete or a rollback misses it, and there is no point
+at which a wrong count announces itself.
+
 ## Known operational gaps
 
 - **No SMTP is configured.** Supabase's built-in mailer is limited to project

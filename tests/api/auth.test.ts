@@ -570,3 +570,196 @@ describe.runIf(!process.env.SKIP_API_TESTS)("admin surface", () => {
     ).not.toContain(title);
   });
 });
+
+describe.runIf(!process.env.SKIP_API_TESTS)("discussion", () => {
+  async function firstExperienceId(token: string): Promise<string> {
+    const companies = await api("/companies");
+    const list = (companies.body as unknown as { companies: Array<{ id: string }> }).companies;
+    for (const company of list) {
+      const items = await api(`/companies/${company.id}/experiences`);
+      const found = (items.body as unknown as { items: Array<{ id: string }> }).items[0];
+      if (found) return found.id;
+    }
+    // Nothing seeded on this run - make one so the suite is order-independent.
+    const created = await api(
+      "/experiences",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          company_id: list[0].id,
+          round_name: "Seed round",
+          experience: "A sufficiently long description for the validator to accept.",
+        }),
+      },
+      token,
+    );
+    return (created.body as unknown as { item: { id: string } }).item.id;
+  }
+
+  it.runIf(stackUp)("requires an account to comment but not to read", async () => {
+    const student = await login("student@iiit.ac.in");
+    const experienceId = await firstExperienceId(student.access_token);
+
+    expect(
+      (
+        await api("/comments", {
+          method: "POST",
+          body: JSON.stringify({ entity_type: "experience", entity_id: experienceId, body: "hi" }),
+        })
+      ).status,
+    ).toBe(401);
+
+    expect((await api(`/comments?entity_type=experience&entity_id=${experienceId}`)).status).toBe(200);
+  });
+
+  it.runIf(stackUp)("flattens a reply to a reply onto the same parent", async () => {
+    // Unbounded nesting reads badly and has no natural end; the API collapses
+    // it rather than letting the client decide.
+    const student = await login("student@iiit.ac.in");
+    const experienceId = await firstExperienceId(student.access_token);
+
+    const root = await api(
+      "/comments",
+      {
+        method: "POST",
+        body: JSON.stringify({ entity_type: "experience", entity_id: experienceId, body: "Root" }),
+      },
+      student.access_token,
+    );
+    const rootId = (root.body as unknown as { comment: { id: string } }).comment.id;
+
+    const reply = await api(
+      "/comments",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          entity_type: "experience",
+          entity_id: experienceId,
+          parent_id: rootId,
+          body: "Reply",
+        }),
+      },
+      student.access_token,
+    );
+    const replyId = (reply.body as unknown as { comment: { id: string } }).comment.id;
+
+    const nested = await api(
+      "/comments",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          entity_type: "experience",
+          entity_id: experienceId,
+          parent_id: replyId,
+          body: "Reply to the reply",
+        }),
+      },
+      student.access_token,
+    );
+    expect((nested.body as unknown as { comment: { parent_id: string } }).comment.parent_id).toBe(rootId);
+  });
+
+  it.runIf(stackUp)("lets a moderator remove a comment but never edit one", async () => {
+    const student = await login("student@iiit.ac.in");
+    const admin = await login("admin@iiit.ac.in");
+    const experienceId = await firstExperienceId(student.access_token);
+
+    const created = await api(
+      "/comments",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          entity_type: "experience",
+          entity_id: experienceId,
+          body: "Something to moderate",
+        }),
+      },
+      student.access_token,
+    );
+    const id = (created.body as unknown as { comment: { id: string } }).comment.id;
+
+    // Removing is moderation; rewriting would be putting words in someone's mouth.
+    expect(
+      (await api(`/comments/${id}`, { method: "PATCH", body: JSON.stringify({ body: "x" }) }, admin.access_token))
+        .status,
+    ).toBe(403);
+    expect((await api(`/comments/${id}`, { method: "DELETE" }, admin.access_token)).status).toBe(200);
+
+    const after = await api(`/comments?entity_type=experience&entity_id=${experienceId}`);
+    const removed = (
+      after.body as unknown as { comments: Array<{ id: string; is_deleted: boolean; body: string | null }> }
+    ).comments.find((comment) => comment.id === id);
+
+    // The row survives so replies keep their context, but the text does not
+    // travel to the client at all.
+    expect(removed?.is_deleted).toBe(true);
+    expect(removed?.body).toBeNull();
+  });
+
+  it.runIf(stackUp)("counts one vote per person and lets it be taken back", async () => {
+    const student = await login("student@iiit.ac.in");
+    const editor = await login("editor@iiit.ac.in");
+    const experienceId = await firstExperienceId(student.access_token);
+
+    const cast = (token: string, value: number) =>
+      api(
+        "/votes",
+        {
+          method: "POST",
+          body: JSON.stringify({ entity_type: "experience", entity_id: experienceId, value }),
+        },
+        token,
+      );
+
+    // Clear any earlier state so the arithmetic is about this test only.
+    await cast(student.access_token, 0);
+    await cast(editor.access_token, 0);
+
+    const first = await cast(student.access_token, 1);
+    expect((first.body as unknown as { score: number }).score).toBe(1);
+
+    const again = await cast(student.access_token, 1);
+    expect((again.body as unknown as { score: number }).score).toBe(1);
+
+    const second = await cast(editor.access_token, 1);
+    expect((second.body as unknown as { score: number }).score).toBe(2);
+
+    const cleared = await cast(student.access_token, 0);
+    expect((cleared.body as unknown as { score: number }).score).toBe(1);
+
+    await cast(editor.access_token, 0);
+  });
+});
+
+describe.runIf(!process.env.SKIP_API_TESTS)("tags", () => {
+  it.runIf(stackUp)("needs editor access and folds case variants into one tag", async () => {
+    const student = await login("student@iiit.ac.in");
+    const editor = await login("editor@iiit.ac.in");
+
+    const companies = await api("/companies");
+    const companyId = (companies.body as unknown as { companies: Array<{ id: string }> }).companies[0].id;
+
+    expect(
+      (
+        await api(
+          `/companies/${companyId}/tags`,
+          { method: "PUT", body: JSON.stringify({ tags: ["Fintech"] }) },
+          student.access_token,
+        )
+      ).status,
+    ).toBe(403);
+
+    // "Fintech" and "FINTECH" must not become two tags.
+    const set = await api(
+      `/companies/${companyId}/tags`,
+      { method: "PUT", body: JSON.stringify({ tags: ["Fintech", "FINTECH", "Intern + PPO"] }) },
+      editor.access_token,
+    );
+    expect(set.status).toBe(200);
+    expect((set.body as unknown as { tags: string[] }).tags).toEqual(["fintech", "intern-ppo"]);
+
+    const read = await api(`/companies/${companyId}/tags`);
+    const slugs = (read.body as unknown as { tags: Array<{ slug: string }> }).tags.map((t) => t.slug);
+    expect(slugs.sort()).toEqual(["fintech", "intern-ppo"]);
+  });
+});

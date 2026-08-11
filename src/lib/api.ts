@@ -295,6 +295,36 @@ export interface ImportResult {
   failures?: ImportIssue[];
 }
 
+export type CommentableType = "experience" | "question";
+export type VotableType = "experience" | "question" | "comment";
+
+export interface Comment {
+  id: string;
+  entity_type: CommentableType;
+  entity_id: string;
+  parent_id: string | null;
+  author_id: string | null;
+  /** Null once removed - the text does not travel to the client at all. */
+  body: string | null;
+  is_deleted: boolean;
+  edited_at: string | null;
+  created_at: string;
+  author: { full_name: string | null; avatar_url: string | null } | null;
+  score: number;
+  my_vote: number;
+}
+
+export interface VoteSummary {
+  scores: Record<string, number>;
+  my_votes: Record<string, number>;
+}
+
+export interface Tag {
+  id: string;
+  slug: string;
+  label: string;
+}
+
 export interface Announcement {
   id: string;
   title: string;
@@ -488,6 +518,47 @@ export const api = {
 
     remove: (id: string) =>
       request<{ success: boolean }>(`/attachments?id=${id}`, { method: "DELETE" }),
+  },
+
+  comments: {
+    list: (entityType: CommentableType, entityId: string) =>
+      request<{ comments: Comment[] }>(
+        `/comments?entity_type=${entityType}&entity_id=${entityId}`,
+      ).then((r) => r.comments),
+
+    create: (input: {
+      entity_type: CommentableType;
+      entity_id: string;
+      body: string;
+      parent_id?: string;
+    }) => request<{ comment: Comment }>("/comments", { method: "POST", body: input }),
+
+    update: (id: string, body: string) =>
+      request<{ comment: Comment }>(`/comments/${id}`, { method: "PATCH", body: { body } }),
+
+    remove: (id: string) => request<{ success: boolean }>(`/comments/${id}`, { method: "DELETE" }),
+  },
+
+  votes: {
+    cast: (entityType: VotableType, entityId: string, value: 1 | -1 | 0) =>
+      request<{ score: number; my_vote: number }>("/votes", {
+        method: "POST",
+        body: { entity_type: entityType, entity_id: entityId, value },
+      }),
+
+    /** Scores for many ids at once, so a list is one request rather than N. */
+    summary: (entityType: VotableType, ids: string[]): Promise<VoteSummary> =>
+      ids.length === 0
+        ? Promise.resolve({ scores: {}, my_votes: {} })
+        : request<VoteSummary>(`/votes?entity_type=${entityType}&ids=${ids.join(",")}`),
+  },
+
+  tags: {
+    list: () => request<{ tags: Tag[] }>("/tags", { auth: false }).then((r) => r.tags),
+    forCompany: (companyId: string) =>
+      request<{ tags: Tag[] }>(`/companies/${companyId}/tags`, { auth: false }).then((r) => r.tags),
+    setForCompany: (companyId: string, tags: string[]) =>
+      request<{ success: boolean }>(`/companies/${companyId}/tags`, { method: "PUT", body: { tags } }),
   },
 
   announcements: {

@@ -22,6 +22,8 @@ import { QuestionForm } from "@/components/companies/QuestionForm";
 import { RoundTimeline } from "@/components/companies/RoundTimeline";
 import { TrackingControls } from "@/components/companies/TrackingControls";
 import { AttachmentsPanel } from "@/components/attachments/AttachmentsPanel";
+import { CommentThread } from "@/components/discussion/CommentThread";
+import { VoteButton } from "@/components/discussion/VoteButton";
 import { EmptyState } from "@/components/EmptyState";
 import { Shimmer } from "@/components/skeletons/CompanyTableSkeleton";
 import { Button } from "@/components/ui/button";
@@ -53,7 +55,8 @@ import {
 import { resolvePhase } from "@/lib/phase";
 import { formatCtc, parseCtcToNumber } from "@/lib/ctc";
 import { formatInISTHuman } from "@/lib/utils";
-import type { ExperienceWithAuthor, QuestionWithAuthor } from "@/lib/api";
+import { api, type ExperienceWithAuthor, type QuestionWithAuthor } from "@/lib/api";
+import { useQuery } from "@tanstack/react-query";
 
 const CompanyDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -70,6 +73,23 @@ const CompanyDetail = () => {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [editingExperience, setEditingExperience] = useState<ExperienceWithAuthor | null>(null);
   const [editingQuestion, setEditingQuestion] = useState<QuestionWithAuthor | null>(null);
+
+  const { data: tags = [] } = useQuery({
+    queryKey: ["tags", "company", id],
+    queryFn: () => api.tags.forCompany(id as string),
+    enabled: Boolean(id),
+  });
+
+  const experienceVotes = useQuery({
+    queryKey: ["votes", "experience", id],
+    queryFn: () => api.votes.summary("experience", experiences.map((entry) => entry.id)),
+    enabled: experiences.length > 0,
+  });
+  const questionVotes = useQuery({
+    queryKey: ["votes", "question", id],
+    queryFn: () => api.votes.summary("question", questions.map((entry) => entry.id)),
+    enabled: questions.length > 0,
+  });
 
   const deleteCompany = useDeleteCompany();
   const deleteExperience = useDeleteExperience(id ?? "");
@@ -163,6 +183,15 @@ const CompanyDetail = () => {
                     </a>
                   )}
                 </div>
+                {tags.length > 0 && (
+                  <div className="mt-2.5 flex flex-wrap gap-1.5">
+                    {tags.map((tag) => (
+                      <Badge key={tag.id} variant="outline" className="text-2xs font-normal">
+                        {tag.label}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
                 {company.description && (
                   <p className="mt-3 max-w-2xl text-sm text-muted-foreground">{company.description}</p>
                 )}
@@ -307,6 +336,13 @@ const CompanyDetail = () => {
                     canModerate={canModerate(entry.user_id)}
                     onEdit={() => setEditingExperience(entry)}
                     onDelete={() => deleteExperience.mutate(entry.id)}
+                    vote={{
+                      entityType: "experience",
+                      entityId: entry.id,
+                      score: experienceVotes.data?.scores[entry.id] ?? 0,
+                      myVote: experienceVotes.data?.my_votes[entry.id] ?? 0,
+                      invalidate: ["votes", "experience", id] as const,
+                    }}
                   />
                 ))
               )}
@@ -356,6 +392,13 @@ const CompanyDetail = () => {
                     canModerate={canModerate(entry.user_id)}
                     onEdit={() => setEditingQuestion(entry)}
                     onDelete={() => deleteQuestion.mutate(entry.id)}
+                    vote={{
+                      entityType: "question",
+                      entityId: entry.id,
+                      score: questionVotes.data?.scores[entry.id] ?? 0,
+                      myVote: questionVotes.data?.my_votes[entry.id] ?? 0,
+                      invalidate: ["votes", "question", id] as const,
+                    }}
                   />
                 ))
               )}
@@ -518,6 +561,13 @@ interface ContributionCardProps {
   canModerate: boolean;
   onEdit: () => void;
   onDelete: () => void;
+  vote: {
+    entityType: "experience" | "question";
+    entityId: string;
+    score: number;
+    myVote: number;
+    invalidate: readonly unknown[];
+  };
 }
 
 function ContributionCard({
@@ -530,6 +580,7 @@ function ContributionCard({
   canModerate,
   onEdit,
   onDelete,
+  vote,
 }: ContributionCardProps) {
   return (
     <article className="rounded-lg border border-border bg-card p-5 shadow-xs">
@@ -589,6 +640,19 @@ function ContributionCard({
           <p className="mt-1 whitespace-pre-wrap text-sm">{footer.text}</p>
         </div>
       )}
+
+      <div className="mt-3 flex items-center gap-2">
+        <VoteButton
+          entityType={vote.entityType}
+          entityId={vote.entityId}
+          score={vote.score}
+          myVote={vote.myVote}
+          invalidate={vote.invalidate}
+        />
+        <span className="text-2xs text-muted-foreground">Was this helpful?</span>
+      </div>
+
+      <CommentThread entityType={vote.entityType} entityId={vote.entityId} />
     </article>
   );
 }

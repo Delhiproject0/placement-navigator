@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
@@ -8,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { TagInput } from "@/components/forms/TagInput";
 import { companySchema, type CompanyFormValues } from "@/lib/schemas";
 import { useCreateCompany, useUpdateCompany } from "@/hooks/queries";
-import { ApiError } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { formatForInputInIST, inputISTToOffsetISOString } from "@/lib/utils";
 import type { Company } from "@/types/database";
 
@@ -23,6 +25,20 @@ function nullIfBlank(value: unknown): string | null {
 }
 
 export const CompanyForm = ({ company, onSuccess }: CompanyFormProps) => {
+  const queryClient = useQueryClient();
+  const [tags, setTags] = useState<string[]>([]);
+
+  // Existing tags load after the first render, so the editor is seeded once
+  // they arrive rather than only from an initial value.
+  const { data: existingTags } = useQuery({
+    queryKey: ["tags", "company", company?.id],
+    queryFn: () => api.tags.forCompany(company!.id),
+    enabled: Boolean(company?.id),
+  });
+  useEffect(() => {
+    if (existingTags) setTags(existingTags.map((tag) => tag.label));
+  }, [existingTags]);
+
   const create = useCreateCompany();
   const update = useUpdateCompany(company?.id ?? "");
   const mutation = company ? update : create;
@@ -82,7 +98,14 @@ export const CompanyForm = ({ company, onSuccess }: CompanyFormProps) => {
     };
 
     try {
-      await mutation.mutateAsync(payload as Partial<Company>);
+      const saved = await mutation.mutateAsync(payload as Partial<Company>);
+      // Tags live in their own table, so they are a second call - done after
+      // the company exists, because a new one has no id until then.
+      const companyId = company?.id ?? (saved as Company | undefined)?.id;
+      if (companyId) {
+        await api.tags.setForCompany(companyId, tags);
+        queryClient.invalidateQueries({ queryKey: ["tags"] });
+      }
       onSuccess();
     } catch (error) {
       // Server-side validation lands on the field that caused it, so the
@@ -121,6 +144,14 @@ export const CompanyForm = ({ company, onSuccess }: CompanyFormProps) => {
         hint="Where students actually register, if it is not on this site."
       >
         <Input id="external_form" placeholder="https://forms.gle/..." {...form.register("external_form")} />
+      </Field>
+
+      <Field
+        label="Tags"
+        htmlFor="tags"
+        hint="Free-form labels students filter by - fintech, core, dream, intern + PPO."
+      >
+        <TagInput id="tags" value={tags} onChange={setTags} placeholder="Add a tag and press Enter" />
       </Field>
 
       <Field label="Roles" htmlFor="roles" error={errors.roles?.message}>
