@@ -1,118 +1,121 @@
-import { useState } from "react";
-import { useAuth } from "@/hooks/useAuth";
-import { supabase } from "@/integrations/supabase/client";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
-import { errorMessage } from "@/lib/errors";
+import { questionSchema, type QuestionFormValues } from "@/lib/schemas";
+import { useSaveQuestion } from "@/hooks/queries";
+import { ApiError } from "@/lib/api";
+import type { InterviewQuestion } from "@/types/database";
 
 interface QuestionFormProps {
   companyId: string;
+  question?: InterviewQuestion;
   onSuccess: () => void;
+  onCancel?: () => void;
 }
 
-export const QuestionForm = ({ companyId, onSuccess }: QuestionFormProps) => {
-  const { user } = useAuth();
-  const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    question: "",
-    answer: "",
-    topic: "",
-    question_type: "",
+const TYPES = ["DSA", "System Design", "Behavioral", "Technical", "HR", "Puzzle"] as const;
+
+export const QuestionForm = ({ companyId, question, onSuccess, onCancel }: QuestionFormProps) => {
+  const save = useSaveQuestion(companyId);
+
+  const form = useForm<QuestionFormValues>({
+    resolver: zodResolver(questionSchema),
+    defaultValues: {
+      question: question?.question ?? "",
+      answer: question?.answer ?? "",
+      topic: question?.topic ?? "",
+      question_type: (question?.question_type as QuestionFormValues["question_type"]) ?? "",
+    },
   });
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
+  const { errors } = form.formState;
 
-    setLoading(true);
-
+  const onSubmit = form.handleSubmit(async (values) => {
     try {
-      const { error } = await supabase.from("interview_questions").insert({
-        company_id: companyId,
-        user_id: user.id,
-        question: formData.question,
-        answer: formData.answer || null,
-        topic: formData.topic || null,
-        question_type: formData.question_type || null,
+      await save.mutateAsync({
+        id: question?.id,
+        question: values.question.trim(),
+        answer: values.answer?.trim() || null,
+        topic: values.topic?.trim() || null,
+        question_type: values.question_type || null,
       });
-
-      if (error) throw error;
-
-      toast.success("Question added successfully");
+      form.reset();
       onSuccess();
     } catch (error) {
-      toast.error(errorMessage(error));
-    } finally {
-      setLoading(false);
+      if (error instanceof ApiError && error.details) {
+        for (const [field, message] of Object.entries(error.details)) {
+          form.setError(field as keyof QuestionFormValues, { message });
+        }
+      }
     }
-  };
+  });
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="space-y-2">
-        <Label htmlFor="question">Question *</Label>
-        <Textarea
-          id="question"
-          value={formData.question}
-          onChange={(e) => setFormData({ ...formData, question: e.target.value })}
-          placeholder="Enter the interview question..."
-          rows={3}
-          required
-        />
+    <form onSubmit={onSubmit} className="space-y-4" noValidate>
+      <div className="space-y-1.5">
+        <Label htmlFor="question">
+          Question<span className="ml-0.5 text-destructive">*</span>
+        </Label>
+        <Textarea id="question" rows={3} {...form.register("question")} />
+        {errors.question && <p className="text-xs text-destructive">{errors.question.message}</p>}
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="answer">Answer (Optional)</Label>
+      <div className="space-y-1.5">
+        <Label htmlFor="answer">Answer or approach</Label>
         <Textarea
           id="answer"
-          value={formData.answer}
-          onChange={(e) => setFormData({ ...formData, answer: e.target.value })}
-          placeholder="Provide the answer or solution..."
-          rows={4}
+          rows={5}
+          placeholder="How you solved it, or how you would have."
+          {...form.register("answer")}
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-1.5">
           <Label htmlFor="topic">Topic</Label>
-          <Input
-            id="topic"
-            value={formData.topic}
-            onChange={(e) => setFormData({ ...formData, topic: e.target.value })}
-            placeholder="e.g., Arrays, SQL"
-          />
+          <Input id="topic" placeholder="Graphs, OS, Probability..." {...form.register("topic")} />
         </div>
 
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           <Label htmlFor="question_type">Type</Label>
           <Select
-            value={formData.question_type}
-            onValueChange={(value) => setFormData({ ...formData, question_type: value })}
+            value={form.watch("question_type") || ""}
+            onValueChange={(value) =>
+              form.setValue("question_type", value as QuestionFormValues["question_type"], {
+                shouldDirty: true,
+              })
+            }
           >
-            <SelectTrigger>
-              <SelectValue placeholder="Select type" />
+            <SelectTrigger id="question_type">
+              <SelectValue placeholder="Not stated" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="DSA">DSA</SelectItem>
-              <SelectItem value="System Design">System Design</SelectItem>
-              <SelectItem value="Behavioral">Behavioral</SelectItem>
-              <SelectItem value="Technical">Technical</SelectItem>
-              <SelectItem value="HR">HR</SelectItem>
-              <SelectItem value="Puzzle">Puzzle</SelectItem>
+              {TYPES.map((type) => (
+                <SelectItem key={type} value={type}>
+                  {type}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
       </div>
 
-      <Button type="submit" className="w-full" disabled={loading}>
-        {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-        Add Question
-      </Button>
+      <div className="flex justify-end gap-2 border-t border-border pt-4">
+        {onCancel && (
+          <Button type="button" variant="outline" onClick={onCancel}>
+            Cancel
+          </Button>
+        )}
+        <Button type="submit" disabled={save.isPending}>
+          {save.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          {question ? "Save changes" : "Add question"}
+        </Button>
+      </div>
     </form>
   );
 };

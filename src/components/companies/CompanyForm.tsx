@@ -1,288 +1,248 @@
-import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
-import type { Company } from "@/types/database";
+import { TagInput } from "@/components/forms/TagInput";
+import { companySchema, type CompanyFormValues } from "@/lib/schemas";
+import { useCreateCompany, useUpdateCompany } from "@/hooks/queries";
+import { ApiError } from "@/lib/api";
 import { formatForInputInIST, inputISTToOffsetISOString } from "@/lib/utils";
-import { errorMessage } from "@/lib/errors";
+import type { Company } from "@/types/database";
 
 interface CompanyFormProps {
   company?: Company;
   onSuccess: () => void;
 }
 
+/** Empty string is what a cleared input yields; the API wants an absent value. */
+function nullIfBlank(value: unknown): string | null {
+  return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
+}
+
 export const CompanyForm = ({ company, onSuccess }: CompanyFormProps) => {
-  const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    name: company?.name || "",
-    description: company?.description || "",
-    logo_url: company?.logo_url || "",
-    website_url: company?.website_url || "",
-    external_form: company?.external_form || "",
-    visit_date: company?.visit_date || "",
-    registration_deadline: company ? formatForInputInIST(company.registration_deadline) : "",
-    cgpa_cutoff: company?.cgpa_cutoff?.toString() || "",
-    ppt_datetime: company ? formatForInputInIST(company.ppt_datetime) : "",
-    oa_datetime: company ? formatForInputInIST(company.oa_datetime) : "",
-    interview_datetime: company ? formatForInputInIST(company.interview_datetime) : "",
-    offered_ctc: company?.offered_ctc || "",
-    ctc_distribution: company?.ctc_distribution || "",
-    roles: company?.roles?.join(", ") || "",
-    people_selected: company?.people_selected?.toString() || "",
-    bond_details: company?.bond_details || "",
-    job_location: company?.job_location || "",
-    eligibility_criteria: company?.eligibility_criteria || "",
+  const create = useCreateCompany();
+  const update = useUpdateCompany(company?.id ?? "");
+  const mutation = company ? update : create;
+
+  const form = useForm<CompanyFormValues>({
+    resolver: zodResolver(companySchema),
+    defaultValues: {
+      name: company?.name ?? "",
+      description: company?.description ?? "",
+      logo_url: company?.logo_url ?? "",
+      website_url: company?.website_url ?? "",
+      external_form: company?.external_form ?? "",
+      job_location: company?.job_location ?? "",
+      visit_date: company?.visit_date ?? "",
+      // Stored values are absolute instants; the inputs are wall-clock IST.
+      registration_deadline: formatForInputInIST(company?.registration_deadline),
+      ppt_datetime: formatForInputInIST(company?.ppt_datetime),
+      oa_datetime: formatForInputInIST(company?.oa_datetime),
+      interview_datetime: formatForInputInIST(company?.interview_datetime),
+      offered_ctc: company?.offered_ctc ?? "",
+      ctc_distribution: company?.ctc_distribution ?? "",
+      cgpa_cutoff: company?.cgpa_cutoff ?? "",
+      people_selected: company?.people_selected ?? "",
+      roles: company?.roles ?? [],
+      bond_details: company?.bond_details ?? "",
+      eligibility_criteria: company?.eligibility_criteria ?? "",
+    },
   });
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
+  const { errors } = form.formState;
+
+  const onSubmit = form.handleSubmit(async (values) => {
+    const payload = {
+      name: values.name.trim(),
+      description: nullIfBlank(values.description),
+      logo_url: nullIfBlank(values.logo_url),
+      website_url: nullIfBlank(values.website_url),
+      external_form: nullIfBlank(values.external_form),
+      job_location: nullIfBlank(values.job_location),
+      visit_date: nullIfBlank(values.visit_date),
+      registration_deadline: values.registration_deadline
+        ? inputISTToOffsetISOString(values.registration_deadline)
+        : null,
+      ppt_datetime: values.ppt_datetime ? inputISTToOffsetISOString(values.ppt_datetime) : null,
+      oa_datetime: values.oa_datetime ? inputISTToOffsetISOString(values.oa_datetime) : null,
+      interview_datetime: values.interview_datetime
+        ? inputISTToOffsetISOString(values.interview_datetime)
+        : null,
+      offered_ctc: nullIfBlank(values.offered_ctc),
+      ctc_distribution: nullIfBlank(values.ctc_distribution),
+      cgpa_cutoff: values.cgpa_cutoff === "" || values.cgpa_cutoff == null ? null : Number(values.cgpa_cutoff),
+      people_selected:
+        values.people_selected === "" || values.people_selected == null ? null : Number(values.people_selected),
+      roles: values.roles?.length ? values.roles : null,
+      bond_details: nullIfBlank(values.bond_details),
+      eligibility_criteria: nullIfBlank(values.eligibility_criteria),
+    };
 
     try {
-      const payload = {
-        name: formData.name,
-        description: formData.description || null,
-        logo_url: formData.logo_url || null,
-        website_url: formData.website_url || null,
-        visit_date: formData.visit_date || null,
-        ppt_datetime: formData.ppt_datetime ? inputISTToOffsetISOString(formData.ppt_datetime) : null,
-        oa_datetime: formData.oa_datetime ? inputISTToOffsetISOString(formData.oa_datetime) : null,
-        interview_datetime: formData.interview_datetime ? inputISTToOffsetISOString(formData.interview_datetime) : null,
-        offered_ctc: formData.offered_ctc || null,
-        ctc_distribution: formData.ctc_distribution || null,
-        roles: formData.roles ? formData.roles.split(",").map((r) => r.trim()) : null,
-        people_selected: formData.people_selected ? parseInt(formData.people_selected) : null,
-        registration_deadline: formData.registration_deadline ? inputISTToOffsetISOString(formData.registration_deadline) : null,
-        external_form: formData.external_form || null,
-        cgpa_cutoff: formData.cgpa_cutoff ? parseFloat(formData.cgpa_cutoff) : null,
-        // status is computed from dates; do not send user-entered status
-        bond_details: formData.bond_details || null,
-        job_location: formData.job_location || null,
-        eligibility_criteria: formData.eligibility_criteria || null,
-      };
-
-      if (company) {
-        const { error } = await supabase
-          .from("companies")
-          .update(payload)
-          .eq("id", company.id);
-        if (error) throw error;
-        toast.success("Company updated successfully");
-      } else {
-        const { error } = await supabase.from("companies").insert(payload);
-        if (error) throw error;
-        toast.success("Company added successfully");
-      }
-
+      await mutation.mutateAsync(payload as Partial<Company>);
       onSuccess();
     } catch (error) {
-      toast.error(errorMessage(error));
-    } finally {
-      setLoading(false);
+      // Server-side validation lands on the field that caused it, so the
+      // message appears where the user has to fix it.
+      if (error instanceof ApiError && error.details) {
+        for (const [field, message] of Object.entries(error.details)) {
+          form.setError(field as keyof CompanyFormValues, { message });
+        }
+      }
     }
-  };
+  });
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="name">Company Name *</Label>
-          <Input
-            id="name"
-            value={formData.name}
-            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            required
-          />
-        </div>
-        <div />
+    <form onSubmit={onSubmit} className="space-y-5" noValidate>
+      <Field label="Company name" htmlFor="name" error={errors.name?.message} required>
+        <Input id="name" {...form.register("name")} aria-invalid={Boolean(errors.name)} />
+      </Field>
+
+      <Field label="Description" htmlFor="description" error={errors.description?.message}>
+        <Textarea id="description" rows={3} {...form.register("description")} />
+      </Field>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Website" htmlFor="website_url" error={errors.website_url?.message}>
+          <Input id="website_url" placeholder="https://" {...form.register("website_url")} />
+        </Field>
+        <Field label="Logo URL" htmlFor="logo_url" error={errors.logo_url?.message}>
+          <Input id="logo_url" placeholder="https://" {...form.register("logo_url")} />
+        </Field>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="logo_url">Logo URL</Label>
-          <Input
-            id="logo_url"
-            type="url"
-            value={formData.logo_url}
-            onChange={(e) => setFormData({ ...formData, logo_url: e.target.value })}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="website_url">Website URL</Label>
-          <Input
-            id="website_url"
-            type="url"
-            value={formData.website_url}
-            onChange={(e) => setFormData({ ...formData, website_url: e.target.value })}
-          />
-        </div>
-      </div>
+      <Field
+        label="Application form"
+        htmlFor="external_form"
+        error={errors.external_form?.message}
+        hint="Where students actually register, if it is not on this site."
+      >
+        <Input id="external_form" placeholder="https://forms.gle/..." {...form.register("external_form")} />
+      </Field>
 
-      <div className="grid grid-cols-1 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="external_form">External Form URL</Label>
-          <Input
-            id="external_form"
-            type="url"
-            placeholder="https://forms.gle/... or https://company.com/form"
-            value={formData.external_form}
-            onChange={(e) => setFormData({ ...formData, external_form: e.target.value })}
-          />
-        </div>
-      </div>
+      <Field label="Roles" htmlFor="roles" error={errors.roles?.message}>
+        <TagInput
+          id="roles"
+          value={form.watch("roles") ?? []}
+          onChange={(next) => form.setValue("roles", next, { shouldDirty: true })}
+          placeholder="Type a role and press Enter"
+        />
+      </Field>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="roles">Roles (comma separated)</Label>
-          <Input
-            id="roles"
-            value={formData.roles}
-            onChange={(e) => setFormData({ ...formData, roles: e.target.value })}
-            placeholder="SDE, Data Analyst"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="job_location">Job Location</Label>
-          <Input
-            id="job_location"
-            value={formData.job_location}
-            onChange={(e) => setFormData({ ...formData, job_location: e.target.value })}
-          />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="cgpa_cutoff">CGPA Cutoff</Label>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Location" htmlFor="job_location" error={errors.job_location?.message}>
+          <Input id="job_location" {...form.register("job_location")} />
+        </Field>
+        <Field label="CGPA cutoff" htmlFor="cgpa_cutoff" error={errors.cgpa_cutoff?.message} hint="0 to 10">
           <Input
             id="cgpa_cutoff"
             type="number"
             step="0.01"
             min="0"
             max="10"
-            value={formData.cgpa_cutoff}
-            onChange={(e) => setFormData({ ...formData, cgpa_cutoff: e.target.value })}
-            placeholder="7.5"
+            placeholder="7.50"
+            {...form.register("cgpa_cutoff")}
           />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="visit_date">Visit Date</Label>
-          <Input
-            id="visit_date"
-            type="date"
-            value={formData.visit_date}
-            onChange={(e) => setFormData({ ...formData, visit_date: e.target.value })}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="registration_deadline">Registration Deadline</Label>
-          <Input
-            id="registration_deadline"
-            type="datetime-local"
-            value={formData.registration_deadline}
-            onChange={(e) => setFormData({ ...formData, registration_deadline: e.target.value })}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="ppt_datetime">PPT Date & Time</Label>
-          <Input
-            id="ppt_datetime"
-            type="datetime-local"
-            value={formData.ppt_datetime}
-            onChange={(e) => setFormData({ ...formData, ppt_datetime: e.target.value })}
-          />
-        </div>
+        </Field>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="oa_datetime">OA Date & Time</Label>
-          <Input
-            id="oa_datetime"
-            type="datetime-local"
-            value={formData.oa_datetime}
-            onChange={(e) => setFormData({ ...formData, oa_datetime: e.target.value })}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="interview_datetime">Interview Date & Time</Label>
-          <Input
-            id="interview_datetime"
-            type="datetime-local"
-            value={formData.interview_datetime}
-            onChange={(e) => setFormData({ ...formData, interview_datetime: e.target.value })}
-          />
-        </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field
+          label="Offered CTC"
+          htmlFor="offered_ctc"
+          error={errors.offered_ctc?.message}
+          hint="Free text. 'INR 34,05,000' and '20 LPA' are both understood."
+        >
+          <Input id="offered_ctc" placeholder="INR 34,05,000" {...form.register("offered_ctc")} />
+        </Field>
+        <Field label="People selected" htmlFor="people_selected" error={errors.people_selected?.message}>
+          <Input id="people_selected" type="number" min="0" {...form.register("people_selected")} />
+        </Field>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="offered_ctc">Offered CTC</Label>
-          <Input
-            id="offered_ctc"
-            value={formData.offered_ctc}
-            onChange={(e) => setFormData({ ...formData, offered_ctc: e.target.value })}
-            placeholder="INR 12,00,000"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="people_selected">People Selected</Label>
-          <Input
-            id="people_selected"
-            type="number"
-            value={formData.people_selected}
-            onChange={(e) => setFormData({ ...formData, people_selected: e.target.value })}
-          />
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="ctc_distribution">CTC Distribution</Label>
+      <Field label="CTC breakdown" htmlFor="ctc_distribution" error={errors.ctc_distribution?.message}>
         <Input
           id="ctc_distribution"
-          value={formData.ctc_distribution}
-          onChange={(e) => setFormData({ ...formData, ctc_distribution: e.target.value })}
-          placeholder="Base: 8L, Bonus: 2L, Stock: 2L"
+          placeholder="Base 24L, Bonus 4L, ESOP 6L"
+          {...form.register("ctc_distribution")}
         />
-      </div>
+      </Field>
 
-      <div className="space-y-2">
-        <Label htmlFor="eligibility_criteria">Eligibility Criteria</Label>
-        <Textarea
-          id="eligibility_criteria"
-          value={formData.eligibility_criteria}
-          onChange={(e) => setFormData({ ...formData, eligibility_criteria: e.target.value })}
-          rows={2}
-        />
-      </div>
+      <fieldset className="rounded-md border border-border p-4">
+        <legend className="px-1.5 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Schedule (IST)
+        </legend>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Visit date" htmlFor="visit_date" error={errors.visit_date?.message}>
+            <Input id="visit_date" type="date" {...form.register("visit_date")} />
+          </Field>
+          <Field
+            label="Registration closes"
+            htmlFor="registration_deadline"
+            error={errors.registration_deadline?.message}
+          >
+            <Input
+              id="registration_deadline"
+              type="datetime-local"
+              {...form.register("registration_deadline")}
+            />
+          </Field>
+          <Field label="PPT" htmlFor="ppt_datetime" error={errors.ppt_datetime?.message}>
+            <Input id="ppt_datetime" type="datetime-local" {...form.register("ppt_datetime")} />
+          </Field>
+          <Field label="Online assessment" htmlFor="oa_datetime" error={errors.oa_datetime?.message}>
+            <Input id="oa_datetime" type="datetime-local" {...form.register("oa_datetime")} />
+          </Field>
+          <Field
+            label="Interview"
+            htmlFor="interview_datetime"
+            error={errors.interview_datetime?.message}
+          >
+            <Input id="interview_datetime" type="datetime-local" {...form.register("interview_datetime")} />
+          </Field>
+        </div>
+      </fieldset>
 
-      <div className="space-y-2">
-        <Label htmlFor="bond_details">Bond Details</Label>
-        <Input
-          id="bond_details"
-          value={formData.bond_details}
-          onChange={(e) => setFormData({ ...formData, bond_details: e.target.value })}
-        />
-      </div>
+      <Field label="Eligibility" htmlFor="eligibility_criteria" error={errors.eligibility_criteria?.message}>
+        <Textarea id="eligibility_criteria" rows={2} {...form.register("eligibility_criteria")} />
+      </Field>
 
-      <div className="space-y-2">
-        <Label htmlFor="description">Description</Label>
-        <Textarea
-          id="description"
-          value={formData.description}
-          onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-          rows={3}
-        />
-      </div>
+      <Field label="Bond details" htmlFor="bond_details" error={errors.bond_details?.message}>
+        <Textarea id="bond_details" rows={2} {...form.register("bond_details")} />
+      </Field>
 
-      <Button type="submit" className="w-full" disabled={loading}>
-        {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-        {company ? "Update Company" : "Add Company"}
-      </Button>
+      <div className="flex justify-end gap-2 border-t border-border pt-4">
+        <Button type="submit" disabled={mutation.isPending}>
+          {mutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          {company ? "Save changes" : "Add company"}
+        </Button>
+      </div>
     </form>
   );
 };
+
+interface FieldProps {
+  label: string;
+  htmlFor: string;
+  error?: string;
+  hint?: string;
+  required?: boolean;
+  children: React.ReactNode;
+}
+
+function Field({ label, htmlFor, error, hint, required, children }: FieldProps) {
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={htmlFor}>
+        {label}
+        {required && <span className="ml-0.5 text-destructive">*</span>}
+      </Label>
+      {children}
+      {hint && !error && <p className="text-xs text-muted-foreground">{hint}</p>}
+      {error && <p className="text-xs text-destructive">{error}</p>}
+    </div>
+  );
+}

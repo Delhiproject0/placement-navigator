@@ -1,753 +1,579 @@
-import { useState, useEffect } from "react";
-import { useParams, Link } from "react-router-dom";
-import { format } from "date-fns";
-import { formatInISTHuman } from "@/lib/utils";
-import { useAuth } from "@/hooks/useAuth";
-import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { useMemo, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import {
+  ArrowLeft,
+  Building2,
+  CalendarClock,
+  Edit,
+  ExternalLink,
+  IndianRupee,
+  MapPin,
+  Plus,
+  Trash,
+  Users,
+} from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
 import { PhaseChip } from "@/components/companies/PhaseChip";
-import { resolvePhase } from "@/lib/phase";
+import { DeadlinePill } from "@/components/companies/DeadlinePill";
+import { CompanyLogo } from "@/components/companies/CompanyLogo";
 import { CompanyForm } from "@/components/companies/CompanyForm";
 import { ExperienceForm } from "@/components/companies/ExperienceForm";
 import { QuestionForm } from "@/components/companies/QuestionForm";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { RoundTimeline } from "@/components/companies/RoundTimeline";
+import { EmptyState } from "@/components/EmptyState";
+import { Shimmer } from "@/components/skeletons/CompanyTableSkeleton";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { ArrowLeft, Building2, Calendar, DollarSign, Edit, ExternalLink, MapPin, Plus, Users, Trash } from "lucide-react";
 import {
   AlertDialog,
-  AlertDialogTrigger,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogFooter,
   AlertDialogAction,
   AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import type { Company, InterviewExperience, InterviewQuestion, Profile } from "@/types/database";
-import { errorMessage } from "@/lib/errors";
-
-// Inline edit form for experiences
-function ExperienceEditForm({ experience, onCancel, onSaved }: { experience: InterviewExperience; onCancel: () => void; onSaved: () => void }) {
-  const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    round_name: experience.round_name || "",
-    experience: experience.experience || "",
-    difficulty: experience.difficulty || "",
-    result: experience.result || "",
-    tips: experience.tips || "",
-  });
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      const { error } = await supabase
-        .from("interview_experiences")
-        .update({
-          round_name: formData.round_name,
-          experience: formData.experience,
-          difficulty: formData.difficulty || null,
-          result: formData.result || null,
-          tips: formData.tips || null,
-        })
-        .eq("id", experience.id);
-      if (error) throw error;
-      toast.success("Experience updated");
-      onSaved();
-    } catch (err) {
-      toast.error(errorMessage(err, 'Failed to update'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="space-y-2">
-        <Label htmlFor="round_name">Round Name</Label>
-        <Input id="round_name" value={formData.round_name} onChange={(e) => setFormData({ ...formData, round_name: e.target.value })} required />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="experience">Experience</Label>
-        <Textarea id="experience" value={formData.experience} onChange={(e) => setFormData({ ...formData, experience: e.target.value })} rows={5} required />
-      </div>
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="difficulty">Difficulty</Label>
-          <Input id="difficulty" value={formData.difficulty} onChange={(e) => setFormData({ ...formData, difficulty: e.target.value })} />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="result">Result</Label>
-          <Input id="result" value={formData.result} onChange={(e) => setFormData({ ...formData, result: e.target.value })} />
-        </div>
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="tips">Tips</Label>
-        <Textarea id="tips" value={formData.tips} onChange={(e) => setFormData({ ...formData, tips: e.target.value })} rows={3} />
-      </div>
-      <div className="flex gap-2 justify-end">
-        <Button variant="outline" onClick={onCancel} type="button">Cancel</Button>
-        <Button type="submit" disabled={loading}>{loading ? 'Saving...' : 'Save'}</Button>
-      </div>
-    </form>
-  );
-}
-
-// Inline edit form for questions
-function QuestionEditForm({ question, onCancel, onSaved }: { question: InterviewQuestion; onCancel: () => void; onSaved: () => void }) {
-  const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    question: question.question || "",
-    answer: question.answer || "",
-    topic: question.topic || "",
-    question_type: question.question_type || "",
-  });
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      const { error } = await supabase
-        .from("interview_questions")
-        .update({
-          question: formData.question,
-          answer: formData.answer || null,
-          topic: formData.topic || null,
-          question_type: formData.question_type || null,
-        })
-        .eq("id", question.id);
-      if (error) throw error;
-      toast.success("Question updated");
-      onSaved();
-    } catch (err) {
-      toast.error(errorMessage(err, 'Failed to update'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="space-y-2">
-        <Label htmlFor="question">Question</Label>
-        <Textarea id="question" value={formData.question} onChange={(e) => setFormData({ ...formData, question: e.target.value })} rows={3} required />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="answer">Answer</Label>
-        <Textarea id="answer" value={formData.answer} onChange={(e) => setFormData({ ...formData, answer: e.target.value })} rows={4} />
-      </div>
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="topic">Topic</Label>
-          <Input id="topic" value={formData.topic} onChange={(e) => setFormData({ ...formData, topic: e.target.value })} />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="question_type">Type</Label>
-          <Input id="question_type" value={formData.question_type} onChange={(e) => setFormData({ ...formData, question_type: e.target.value })} />
-        </div>
-      </div>
-      <div className="flex gap-2 justify-end">
-        <Button variant="outline" onClick={onCancel} type="button">Cancel</Button>
-        <Button type="submit" disabled={loading}>{loading ? 'Saving...' : 'Save'}</Button>
-      </div>
-    </form>
-  );
-}
+import { useAuth } from "@/hooks/useAuth";
+import {
+  useCompany,
+  useDeleteCompany,
+  useDeleteExperience,
+  useDeleteQuestion,
+  useDeletionImpact,
+  useExperiences,
+  useQuestions,
+} from "@/hooks/queries";
+import { resolvePhase } from "@/lib/phase";
+import { formatCtc, parseCtcToNumber } from "@/lib/ctc";
+import { formatInISTHuman } from "@/lib/utils";
+import type { ExperienceWithAuthor, QuestionWithAuthor } from "@/lib/api";
 
 const CompanyDetail = () => {
   const { id } = useParams<{ id: string }>();
-  const { canEdit, user } = useAuth();
-  const [company, setCompany] = useState<Company | null>(null);
-  const [experiences, setExperiences] = useState<InterviewExperience[]>([]);
-  const [questions, setQuestions] = useState<InterviewQuestion[]>([]);
-  const [selectedProfiles, setSelectedProfiles] = useState<Profile[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [experienceDialogOpen, setExperienceDialogOpen] = useState(false);
-  const [questionDialogOpen, setQuestionDialogOpen] = useState(false);
-  const [editExperienceOpen, setEditExperienceOpen] = useState(false);
-  const [editQuestionOpen, setEditQuestionOpen] = useState(false);
-  const [currentExperience, setCurrentExperience] = useState<InterviewExperience | null>(null);
-  const [currentQuestion, setCurrentQuestion] = useState<InterviewQuestion | null>(null);
-  const [processingId, setProcessingId] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const { user, canEdit, isAdmin } = useAuth();
 
-  useEffect(() => {
-    if (id) {
-      fetchCompany();
-      fetchExperiences();
-      fetchQuestions();
-      fetchSelectedProfiles();
-    }
-  }, [id]);
+  const { data: company, isPending, isError } = useCompany(id);
+  const { data: experiences = [], isPending: experiencesLoading } = useExperiences(id);
+  const { data: questions = [], isPending: questionsLoading } = useQuestions(id);
 
-  const fetchCompany = async () => {
-    if (!id) {
-      setLoading(false);
-      return;
-    }
-    try {
-      const { data, error } = await supabase
-        .from("companies")
-        .select("*")
-        .eq("id", id)
-        .maybeSingle();
+  const [editOpen, setEditOpen] = useState(false);
+  const [experienceOpen, setExperienceOpen] = useState(false);
+  const [questionOpen, setQuestionOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [editingExperience, setEditingExperience] = useState<ExperienceWithAuthor | null>(null);
+  const [editingQuestion, setEditingQuestion] = useState<QuestionWithAuthor | null>(null);
 
-      if (error) throw error;
-      // maybeSingle() returns null for an id that doesn't exist. Without this
-      // guard the property reads below dereference null, and the resulting
-      // TypeError gets swallowed by the catch.
-      if (!data) {
-        setCompany(null);
-        return;
-      }
-      setCompany(data as Company);
-    } catch (error) {
-      console.error("Error fetching company:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const deleteCompany = useDeleteCompany();
+  const deleteExperience = useDeleteExperience(id ?? "");
+  const deleteQuestion = useDeleteQuestion(id ?? "");
+  const { data: impact } = useDeletionImpact(id, deleteOpen && isAdmin);
 
-  const fetchExperiences = async () => {
-    if (!id) return;
-    try {
-      const { data, error } = await supabase
-        .from("interview_experiences")
-        .select("*")
-        .eq("company_id", id)
-        .order("created_at", { ascending: false });
+  /**
+   * Exact match, not a substring search.
+   *
+   * This used to be `.ilike('result', '%selected%')`, which also matches
+   * "Not Selected" - so the single experience in the live database, a
+   * rejection, was being listed as a successful candidate.
+   */
+  const selected = useMemo(
+    () => experiences.filter((entry) => entry.result === "Selected"),
+    [experiences],
+  );
 
-      if (error) throw error;
-      setExperiences(data || []);
-    } catch (error) {
-      console.error("Error fetching experiences:", error);
-    }
-  };
+  /** Owner or moderator. The old UI checked ownership only, so an admin could
+      not remove a spam entry from the page it appeared on. */
+  const canModerate = (authorId: string | null) => Boolean(user) && (user?.id === authorId || canEdit);
 
-  const fetchSelectedProfiles = async () => {
-    if (!id) return;
-    try {
-      // Get user_ids from interview_experiences where result indicates selected
-      const { data: selData, error: selErr } = await supabase
-        .from('interview_experiences')
-        .select('user_id')
-        .eq('company_id', id)
-        .filter('user_id', 'not.is', null)
-        .ilike('result', '%selected%');
-
-      if (selErr) throw selErr;
-
-      const userIds = Array.from(new Set((selData || []).map((r) => r.user_id))).filter(
-        (uid): uid is string => uid !== null,
-      );
-
-      if (userIds.length === 0) {
-        setSelectedProfiles([]);
-        return;
-      }
-
-      const { data: profiles, error: profErr } = await supabase
-        .from('profiles')
-        .select('*')
-        .in('user_id', userIds);
-
-      if (profErr) throw profErr;
-      setSelectedProfiles(profiles || []);
-    } catch (error) {
-      console.error('Error fetching selected profiles:', error);
-    }
-  };
-
-  const fetchQuestions = async () => {
-    if (!id) return;
-    try {
-      const { data, error } = await supabase
-        .from("interview_questions")
-        .select("*")
-        .eq("company_id", id)
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-      setQuestions(data || []);
-    } catch (error) {
-      console.error("Error fetching questions:", error);
-    }
-  };
-
-  const formatDateTime = (dateTime: string | null) => {
-    if (!dateTime) return "Not scheduled";
-    return formatInISTHuman(dateTime);
-  };
-
-  if (loading) {
+  if (isPending) {
     return (
       <Layout>
-        <div className="container mx-auto px-4 py-8">
-          <div className="text-center py-12 text-muted-foreground">Loading...</div>
+        <div className="container space-y-4 py-10">
+          <Shimmer className="h-8 w-64 rounded-sm" />
+          <Shimmer className="h-4 w-96 rounded-sm" />
+          <Shimmer className="h-64 w-full rounded-lg" />
         </div>
       </Layout>
     );
   }
 
-  if (!company) {
+  if (isError || !company) {
     return (
       <Layout>
-        <div className="container mx-auto px-4 py-8">
-          <div className="text-center py-12">
-            <h1 className="text-2xl font-bold mb-2">Company not found</h1>
-            <Button asChild>
-              <Link to="/companies">Back to Companies</Link>
-            </Button>
-          </div>
+        <div className="container py-16">
+          <EmptyState
+            variant="search"
+            title="Company not found"
+            description="This company may have been removed, or the link is wrong."
+            action={
+              <Button asChild>
+                <Link to="/companies">Back to companies</Link>
+              </Button>
+            }
+          />
         </div>
       </Layout>
     );
   }
+
+  const phase = resolvePhase(company);
+  const ctc = parseCtcToNumber(company.offered_ctc);
 
   return (
     <Layout>
-      <div className="container mx-auto px-4 py-8">
-        <Button variant="ghost" asChild className="mb-6">
-          <Link to="/companies">
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Companies
+      <div className="border-b border-border bg-muted/25">
+        <div className="container py-7">
+          <Link
+            to="/companies"
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            All companies
           </Link>
-        </Button>
 
-        <div className="grid gap-6 lg:grid-cols-3">
-          <div className="lg:col-span-2 space-y-6">
-            <Card>
-              <CardHeader>
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-4">
-                    {company.logo_url ? (
-                      <img
-                        src={company.logo_url}
-                        alt={company.name}
-                        className="h-16 w-16 rounded-lg object-contain bg-muted"
-                      />
-                    ) : (
-                      <div className="h-16 w-16 rounded-lg bg-primary/10 flex items-center justify-center">
-                        <Building2 className="h-8 w-8 text-primary" />
-                      </div>
-                    )}
-                    <div>
-                      <CardTitle className="text-2xl">{company.name}</CardTitle>
-                      <div className="flex items-center gap-2 mt-2">
-                        <PhaseChip phase={resolvePhase(company)} />
-                        {company.website_url && (
-                          <Button variant="ghost" size="sm" asChild>
-                            <a href={company.website_url} target="_blank" rel="noopener noreferrer">
-                              <ExternalLink className="h-4 w-4" />
-                            </a>
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  {canEdit && (
-                    <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-                      <DialogTrigger asChild>
-                        <Button variant="outline" size="sm">
-                          <Edit className="mr-2 h-4 w-4" />
-                          Edit
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                        <DialogHeader>
-                          <DialogTitle>Edit Company</DialogTitle>
-                        </DialogHeader>
-                        <CompanyForm
-                          company={company}
-                          onSuccess={() => {
-                            setEditDialogOpen(false);
-                            fetchCompany();
-                          }}
-                        />
-                      </DialogContent>
-                    </Dialog>
+          <div className="mt-5 flex flex-col justify-between gap-5 md:flex-row md:items-start">
+            <div className="flex min-w-0 items-start gap-4">
+              <CompanyLogo name={company.name} url={company.logo_url} className="h-14 w-14 rounded-md" />
+              <div className="min-w-0">
+                <h1 className="font-display text-3xl font-semibold tracking-tight">{company.name}</h1>
+                <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                  <PhaseChip phase={phase} />
+                  {company.job_location && (
+                    <span className="inline-flex items-center gap-1 text-sm text-muted-foreground">
+                      <MapPin className="h-3.5 w-3.5" />
+                      {company.job_location}
+                    </span>
+                  )}
+                  {company.website_url && (
+                    <a
+                      href={company.website_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      Website
+                    </a>
                   )}
                 </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {company.roles && company.roles.length > 0 && (
-                  <div>
-                    <h4 className="text-sm font-medium text-muted-foreground mb-2">Roles</h4>
-                    <div className="flex flex-wrap gap-2">
-                      {company.roles.map((role, i) => (
-                        <Badge key={i} variant="secondary">{role}</Badge>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
                 {company.description && (
-                  <div>
-                    <h4 className="text-sm font-medium text-muted-foreground mb-2">Description</h4>
-                    <p className="text-sm">{company.description}</p>
-                  </div>
+                  <p className="mt-3 max-w-2xl text-sm text-muted-foreground">{company.description}</p>
                 )}
+              </div>
+            </div>
 
-                {company.eligibility_criteria && (
-                  <div>
-                    <h4 className="text-sm font-medium text-muted-foreground mb-2">Eligibility Criteria</h4>
-                    <p className="text-sm">{company.eligibility_criteria}</p>
-                  </div>
-                )}
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              {company.external_form && (
+                <Button asChild>
+                  <a href={company.external_form} target="_blank" rel="noreferrer">
+                    Register
+                    <ExternalLink className="ml-2 h-3.5 w-3.5" />
+                  </a>
+                </Button>
+              )}
 
-                {company.ctc_distribution && (
-                  <div>
-                    <h4 className="text-sm font-medium text-muted-foreground mb-2">CTC Distribution</h4>
-                    <p className="text-sm">{company.ctc_distribution}</p>
-                  </div>
-                )}
+              {canEdit && (
+                <Dialog open={editOpen} onOpenChange={setEditOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline">
+                      <Edit className="mr-2 h-4 w-4" />
+                      Edit
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+                    <DialogHeader>
+                      <DialogTitle className="font-display">Edit {company.name}</DialogTitle>
+                    </DialogHeader>
+                    <CompanyForm company={company} onSuccess={() => setEditOpen(false)} />
+                  </DialogContent>
+                </Dialog>
+              )}
 
-                {company.bond_details && (
-                  <div>
-                    <h4 className="text-sm font-medium text-muted-foreground mb-2">Bond Details</h4>
-                    <p className="text-sm">{company.bond_details}</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Tabs defaultValue="experiences">
-              <TabsList>
-                <TabsTrigger value="experiences">
-                  Experiences ({experiences.length})
-                </TabsTrigger>
-                <TabsTrigger value="questions">
-                  Questions ({questions.length})
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="experiences" className="mt-4 space-y-4">
-                {user && (
-                  <Dialog open={experienceDialogOpen} onOpenChange={setExperienceDialogOpen}>
-                    <DialogTrigger asChild>
-                      <Button>
-                        <Plus className="mr-2 h-4 w-4" />
-                        Share Experience
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>Share Interview Experience</DialogTitle>
-                      </DialogHeader>
-                      <ExperienceForm
-                        companyId={company.id}
-                        onSuccess={() => {
-                          setExperienceDialogOpen(false);
-                          fetchExperiences();
+              {isAdmin && (
+                <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="outline" className="text-destructive hover:text-destructive">
+                      <Trash className="h-4 w-4" />
+                      <span className="sr-only">Delete company</span>
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete {company.name}?</AlertDialogTitle>
+                      <AlertDialogDescription asChild>
+                        <div className="space-y-2">
+                          <span className="block">This cannot be undone.</span>
+                          {/* Naming what else goes matters: the cascade takes
+                              student-written content with it. */}
+                          {impact && (impact.experiences > 0 || impact.questions > 0) && (
+                            <span className="block rounded-sm border border-destructive/25 bg-destructive/10 p-2.5 text-destructive">
+                              This will also delete {impact.experiences} interview{" "}
+                              {impact.experiences === 1 ? "experience" : "experiences"} and{" "}
+                              {impact.questions} {impact.questions === 1 ? "question" : "questions"}{" "}
+                              contributed by students.
+                            </span>
+                          )}
+                        </div>
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={async () => {
+                          await deleteCompany.mutateAsync(company.id);
+                          navigate("/companies");
                         }}
-                      />
-                    </DialogContent>
-                  </Dialog>
-                )}
-
-                {experiences.length === 0 ? (
-                  <Card>
-                    <CardContent className="py-8 text-center text-muted-foreground">
-                      No experiences shared yet. Be the first to share!
-                    </CardContent>
-                  </Card>
-                ) : (
-                  experiences.map((exp) => (
-                    <Card key={exp.id}>
-                      <CardHeader>
-                        <div className="flex items-center justify-between">
-                          <CardTitle className="text-lg">{exp.round_name}</CardTitle>
-                          <div className="flex items-center gap-2">
-                            {exp.difficulty && (
-                              <Badge variant="outline">{exp.difficulty}</Badge>
-                            )}
-                            {exp.result && (
-                              <Badge variant={exp.result === "Selected" ? "default" : "secondary"}>
-                                {exp.result}
-                              </Badge>
-                            )}
-                            {user && user.id === exp.user_id && (
-                              <div className="flex items-center gap-1">
-                                <Dialog open={editExperienceOpen && currentExperience?.id === exp.id} onOpenChange={setEditExperienceOpen}>
-                                  <DialogTrigger asChild>
-                                    <Button variant="ghost" size="sm" onClick={() => { setCurrentExperience(exp); setEditExperienceOpen(true); }}>
-                                      <Edit className="h-4 w-4" />
-                                    </Button>
-                                  </DialogTrigger>
-                                  <DialogContent>
-                                    <DialogHeader>
-                                      <DialogTitle>Edit Experience</DialogTitle>
-                                    </DialogHeader>
-                                    <ExperienceEditForm
-                                      experience={exp}
-                                      onCancel={() => { setEditExperienceOpen(false); setCurrentExperience(null); }}
-                                      onSaved={() => { setEditExperienceOpen(false); setCurrentExperience(null); fetchExperiences(); }}
-                                    />
-                                  </DialogContent>
-                                </Dialog>
-
-                                <AlertDialog>
-                                  <AlertDialogTrigger asChild>
-                                    <Button variant="destructive" size="sm">
-                                      <Trash className="h-4 w-4" />
-                                    </Button>
-                                  </AlertDialogTrigger>
-                                  <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                      <AlertDialogTitle>Delete experience?</AlertDialogTitle>
-                                      <AlertDialogDescription>
-                                        This will permanently remove the experience. Are you sure?
-                                      </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                      <AlertDialogAction disabled={processingId === exp.id} onClick={async () => { setProcessingId(exp.id); try { const { error } = await supabase.from('interview_experiences').delete().eq('id', exp.id); if (error) throw error; fetchExperiences(); toast.success("Deleted", { description: 'Experience removed' }); } catch (err) { toast.error(errorMessage(err, 'Failed to delete')); } finally { setProcessingId(null); } }}>Delete</AlertDialogAction>
-                                    </AlertDialogFooter>
-                                  </AlertDialogContent>
-                                </AlertDialog>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="space-y-3">
-                        <p className="text-sm whitespace-pre-wrap">{exp.experience}</p>
-                        {exp.tips && (
-                          <div className="bg-muted/50 p-3 rounded-md">
-                            <p className="text-sm font-medium mb-1">Tips</p>
-                            <p className="text-sm text-muted-foreground">{exp.tips}</p>
-                          </div>
-                        )}
-                        <p className="text-xs text-muted-foreground">
-                          {format(new Date(exp.created_at), "MMMM d, yyyy")}
-                        </p>
-                      </CardContent>
-                    </Card>
-                  ))
-                )}
-              </TabsContent>
-
-              <TabsContent value="questions" className="mt-4 space-y-4">
-                {user && (
-                  <Dialog open={questionDialogOpen} onOpenChange={setQuestionDialogOpen}>
-                    <DialogTrigger asChild>
-                      <Button>
-                        <Plus className="mr-2 h-4 w-4" />
-                        Add Question
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>Add Interview Question</DialogTitle>
-                      </DialogHeader>
-                      <QuestionForm
-                        companyId={company.id}
-                        onSuccess={() => {
-                          setQuestionDialogOpen(false);
-                          fetchQuestions();
-                        }}
-                      />
-                    </DialogContent>
-                  </Dialog>
-                )}
-
-                {questions.length === 0 ? (
-                  <Card>
-                    <CardContent className="py-8 text-center text-muted-foreground">
-                      No questions added yet. Be the first to contribute!
-                    </CardContent>
-                  </Card>
-                ) : (
-                  questions.map((q) => (
-                    <Card key={q.id}>
-                      <CardContent className="pt-6">
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="space-y-2 flex-1">
-                            <p className="font-medium">{q.question}</p>
-                            {q.answer && (
-                              <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                                {q.answer}
-                              </p>
-                            )}
-                          </div>
-                          <div className="flex flex-col items-end gap-1">
-                            {q.topic && <Badge variant="outline">{q.topic}</Badge>}
-                            {q.question_type && (
-                              <Badge variant="secondary" className="text-xs">
-                                {q.question_type}
-                              </Badge>
-                            )}
-                            {user && user.id === q.user_id && (
-                              <div className="flex items-center gap-1 mt-2">
-                                <Dialog open={editQuestionOpen && currentQuestion?.id === q.id} onOpenChange={setEditQuestionOpen}>
-                                  <DialogTrigger asChild>
-                                    <Button variant="ghost" size="sm" onClick={() => { setCurrentQuestion(q); setEditQuestionOpen(true); }}>
-                                      <Edit className="h-4 w-4" />
-                                    </Button>
-                                  </DialogTrigger>
-                                  <DialogContent>
-                                    <DialogHeader>
-                                      <DialogTitle>Edit Question</DialogTitle>
-                                    </DialogHeader>
-                                    <QuestionEditForm
-                                      question={q}
-                                      onCancel={() => { setEditQuestionOpen(false); setCurrentQuestion(null); }}
-                                      onSaved={() => { setEditQuestionOpen(false); setCurrentQuestion(null); fetchQuestions(); }}
-                                    />
-                                  </DialogContent>
-                                </Dialog>
-
-                                <AlertDialog>
-                                  <AlertDialogTrigger asChild>
-                                    <Button variant="destructive" size="sm">
-                                      <Trash className="h-4 w-4" />
-                                    </Button>
-                                  </AlertDialogTrigger>
-                                  <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                      <AlertDialogTitle>Delete question?</AlertDialogTitle>
-                                      <AlertDialogDescription>
-                                        This will permanently remove the question. Are you sure?
-                                      </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                      <AlertDialogAction disabled={processingId === q.id} onClick={async () => { setProcessingId(q.id); try { const { error } = await supabase.from('interview_questions').delete().eq('id', q.id); if (error) throw error; fetchQuestions(); toast.success("Deleted", { description: 'Question removed' }); } catch (err) { toast.error(errorMessage(err, 'Failed to delete')); } finally { setProcessingId(null); } }}>Delete</AlertDialogAction>
-                                    </AlertDialogFooter>
-                                  </AlertDialogContent>
-                                </AlertDialog>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))
-                )}
-              </TabsContent>
-            </Tabs>
-          </div>
-
-          <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Schedule</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-start gap-3">
-                  <Calendar className="h-5 w-5 text-muted-foreground mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium">Visit Date</p>
-                    <p className="text-sm text-muted-foreground">
-                      {company.visit_date
-                        ? format(new Date(company.visit_date), "MMMM d, yyyy")
-                        : "Not scheduled"}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <Calendar className="h-5 w-5 text-muted-foreground mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium">PPT</p>
-                    <p className="text-sm text-muted-foreground">
-                      {formatDateTime(company.ppt_datetime)}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <Calendar className="h-5 w-5 text-muted-foreground mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium">Online Assessment</p>
-                    <p className="text-sm text-muted-foreground">
-                      {formatDateTime(company.oa_datetime)}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <Calendar className="h-5 w-5 text-muted-foreground mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium">Interview</p>
-                    <p className="text-sm text-muted-foreground">
-                      {formatDateTime(company.interview_datetime)}
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Compensation</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-start gap-3">
-                  <DollarSign className="h-5 w-5 text-muted-foreground mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium">Offered CTC</p>
-                    <p className="text-lg font-semibold text-primary">
-                      {company.offered_ctc || "Not disclosed"}
-                    </p>
-                  </div>
-                </div>
-                {company.job_location && (
-                  <div className="flex items-start gap-3">
-                    <MapPin className="h-5 w-5 text-muted-foreground mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium">Location</p>
-                      <p className="text-sm text-muted-foreground">{company.job_location}</p>
-                    </div>
-                  </div>
-                )}
-                {company.people_selected !== null && (
-                  <div className="flex items-start gap-3">
-                    <Users className="h-5 w-5 text-muted-foreground mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium">People Selected</p>
-                      <p className="text-lg font-semibold">{company.people_selected}</p>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Selected Applicants</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {selectedProfiles.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No selected applicants recorded yet.</p>
-                ) : (
-                  <div className="space-y-3">
-                    <p className="text-sm text-muted-foreground">Total selected: {selectedProfiles.length}</p>
-                    <div className="flex flex-col gap-2">
-                      {selectedProfiles.map((p) => (
-                        <div key={p.id} className="flex items-center gap-3">
-                          <img src={p.avatar_url || '/placeholder.svg'} alt={p.full_name ?? p.email ?? 'Selected applicant'} className="h-8 w-8 rounded-full object-cover bg-muted" />
-                          <div>
-                            <div className="font-medium">{p.full_name || p.email}</div>
-                            <div className="text-xs text-muted-foreground">{p.email}</div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      >
+                        Delete permanently
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
+            </div>
           </div>
         </div>
       </div>
+
+      <div className="container grid gap-8 py-8 lg:grid-cols-3">
+        <div className="lg:col-span-2">
+          <Tabs defaultValue="experiences">
+            <TabsList>
+              <TabsTrigger value="experiences">
+                Experiences
+                <span className="ml-1.5 font-mono text-2xs tabular text-muted-foreground">
+                  {experiences.length}
+                </span>
+              </TabsTrigger>
+              <TabsTrigger value="questions">
+                Questions
+                <span className="ml-1.5 font-mono text-2xs tabular text-muted-foreground">
+                  {questions.length}
+                </span>
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="experiences" className="mt-5 space-y-3">
+              <div className="flex justify-end">
+                {user ? (
+                  <Dialog open={experienceOpen} onOpenChange={setExperienceOpen}>
+                    <DialogTrigger asChild>
+                      <Button size="sm">
+                        <Plus className="mr-1.5 h-4 w-4" />
+                        Share your experience
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
+                      <DialogHeader>
+                        <DialogTitle className="font-display">Share your experience</DialogTitle>
+                      </DialogHeader>
+                      <ExperienceForm companyId={company.id} onSuccess={() => setExperienceOpen(false)} />
+                    </DialogContent>
+                  </Dialog>
+                ) : (
+                  <Button size="sm" variant="outline" asChild>
+                    <Link to="/auth">Sign in to contribute</Link>
+                  </Button>
+                )}
+              </div>
+
+              {experiencesLoading ? (
+                <Shimmer className="h-40 w-full rounded-lg" />
+              ) : experiences.length === 0 ? (
+                <EmptyState
+                  variant="experiences"
+                  title="No experiences yet"
+                  description="Nobody has written up this drive. If you sat it, you would be the first."
+                />
+              ) : (
+                experiences.map((entry) => (
+                  <ContributionCard
+                    key={entry.id}
+                    title={entry.round_name}
+                    author={entry.author?.full_name ?? null}
+                    createdAt={entry.created_at}
+                    badges={[entry.difficulty, entry.result].filter(Boolean) as string[]}
+                    body={entry.experience}
+                    footer={entry.tips ? { label: "Tips", text: entry.tips } : undefined}
+                    canModerate={canModerate(entry.user_id)}
+                    onEdit={() => setEditingExperience(entry)}
+                    onDelete={() => deleteExperience.mutate(entry.id)}
+                  />
+                ))
+              )}
+            </TabsContent>
+
+            <TabsContent value="questions" className="mt-5 space-y-3">
+              <div className="flex justify-end">
+                {user ? (
+                  <Dialog open={questionOpen} onOpenChange={setQuestionOpen}>
+                    <DialogTrigger asChild>
+                      <Button size="sm">
+                        <Plus className="mr-1.5 h-4 w-4" />
+                        Add a question
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
+                      <DialogHeader>
+                        <DialogTitle className="font-display">Add a question</DialogTitle>
+                      </DialogHeader>
+                      <QuestionForm companyId={company.id} onSuccess={() => setQuestionOpen(false)} />
+                    </DialogContent>
+                  </Dialog>
+                ) : (
+                  <Button size="sm" variant="outline" asChild>
+                    <Link to="/auth">Sign in to contribute</Link>
+                  </Button>
+                )}
+              </div>
+
+              {questionsLoading ? (
+                <Shimmer className="h-40 w-full rounded-lg" />
+              ) : questions.length === 0 ? (
+                <EmptyState
+                  variant="questions"
+                  title="No questions yet"
+                  description="Add the questions you were asked so the next batch can prepare."
+                />
+              ) : (
+                questions.map((entry) => (
+                  <ContributionCard
+                    key={entry.id}
+                    title={entry.question}
+                    author={entry.author?.full_name ?? null}
+                    createdAt={entry.created_at}
+                    badges={[entry.question_type, entry.topic].filter(Boolean) as string[]}
+                    body={entry.answer ?? ""}
+                    canModerate={canModerate(entry.user_id)}
+                    onEdit={() => setEditingQuestion(entry)}
+                    onDelete={() => deleteQuestion.mutate(entry.id)}
+                  />
+                ))
+              )}
+            </TabsContent>
+          </Tabs>
+        </div>
+
+        <aside className="space-y-5">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="font-display text-base">Schedule</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <RoundTimeline company={company} />
+              {company.registration_deadline && (
+                <div className="mt-4 flex items-center justify-between border-t border-border pt-3">
+                  <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+                    <CalendarClock className="h-3.5 w-3.5" />
+                    Registration
+                  </span>
+                  <DeadlinePill deadline={company.registration_deadline} />
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="font-display text-base">Compensation</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <Detail
+                icon={IndianRupee}
+                label="Offered CTC"
+                value={company.offered_ctc ?? "Not disclosed"}
+                hint={ctc ? formatCtc(ctc) : undefined}
+              />
+              {company.ctc_distribution && (
+                <Detail icon={IndianRupee} label="Breakdown" value={company.ctc_distribution} />
+              )}
+              {company.cgpa_cutoff != null && (
+                <Detail icon={Building2} label="CGPA cutoff" value={Number(company.cgpa_cutoff).toFixed(2)} />
+              )}
+              {company.people_selected != null && (
+                <Detail icon={Users} label="Selected" value={String(company.people_selected)} />
+              )}
+              {company.bond_details && <Detail icon={Building2} label="Bond" value={company.bond_details} />}
+              {company.eligibility_criteria && (
+                <Detail icon={Building2} label="Eligibility" value={company.eligibility_criteria} />
+              )}
+            </CardContent>
+          </Card>
+
+          {selected.length > 0 && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="font-display text-base">Reported offers</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {selected.map((entry) => (
+                  <div key={entry.id} className="flex items-center gap-2.5 text-sm">
+                    <span className="grid h-7 w-7 place-items-center rounded-[999px] bg-success/12 text-2xs font-semibold text-success">
+                      {(entry.author?.full_name ?? "?").charAt(0).toUpperCase()}
+                    </span>
+                    <span className="truncate">{entry.author?.full_name ?? "Anonymous"}</span>
+                    <span className="ml-auto shrink-0 text-2xs text-muted-foreground">{entry.round_name}</span>
+                  </div>
+                ))}
+                <p className="pt-1 text-2xs text-muted-foreground">
+                  Self-reported by students, not verified by the placement office.
+                </p>
+              </CardContent>
+            </Card>
+          )}
+        </aside>
+      </div>
+
+      {/* Edit dialogs, driven by whichever row opened them. */}
+      <Dialog open={Boolean(editingExperience)} onOpenChange={(open) => !open && setEditingExperience(null)}>
+        <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="font-display">Edit experience</DialogTitle>
+          </DialogHeader>
+          {editingExperience && (
+            <ExperienceForm
+              companyId={company.id}
+              experience={editingExperience}
+              onSuccess={() => setEditingExperience(null)}
+              onCancel={() => setEditingExperience(null)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(editingQuestion)} onOpenChange={(open) => !open && setEditingQuestion(null)}>
+        <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="font-display">Edit question</DialogTitle>
+          </DialogHeader>
+          {editingQuestion && (
+            <QuestionForm
+              companyId={company.id}
+              question={editingQuestion}
+              onSuccess={() => setEditingQuestion(null)}
+              onCancel={() => setEditingQuestion(null)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </Layout>
   );
 };
+
+function Detail({
+  icon: Icon,
+  label,
+  value,
+  hint,
+}: {
+  icon: typeof Users;
+  label: string;
+  value: string;
+  hint?: string;
+}) {
+  return (
+    <div className="flex gap-2.5">
+      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+      <div className="min-w-0">
+        <p className="text-2xs uppercase tracking-wider text-muted-foreground">{label}</p>
+        <p className="mt-0.5 break-words">
+          {value}
+          {hint && <span className="ml-1.5 font-mono text-2xs tabular text-muted-foreground">({hint})</span>}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+interface ContributionCardProps {
+  title: string;
+  author: string | null;
+  createdAt: string;
+  badges: string[];
+  body: string;
+  footer?: { label: string; text: string };
+  canModerate: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+}
+
+function ContributionCard({
+  title,
+  author,
+  createdAt,
+  badges,
+  body,
+  footer,
+  canModerate,
+  onEdit,
+  onDelete,
+}: ContributionCardProps) {
+  return (
+    <article className="rounded-lg border border-border bg-card p-5 shadow-xs">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="font-medium">{title}</h3>
+          <p className="mt-1 text-2xs text-muted-foreground">
+            {author ?? "Anonymous"} - {formatInISTHuman(createdAt)}
+          </p>
+        </div>
+        {canModerate && (
+          <div className="flex shrink-0 gap-1">
+            <Button variant="ghost" size="icon" onClick={onEdit} aria-label="Edit">
+              <Edit className="h-3.5 w-3.5" />
+            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="ghost" size="icon" aria-label="Delete">
+                  <Trash className="h-3.5 w-3.5 text-destructive" />
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete this entry?</AlertDialogTitle>
+                  <AlertDialogDescription>This cannot be undone.</AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={onDelete}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    Delete
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+        )}
+      </div>
+
+      {badges.length > 0 && (
+        <div className="mt-2.5 flex flex-wrap gap-1.5">
+          {badges.map((badge) => (
+            <Badge key={badge} variant="outline" className="text-2xs font-normal">
+              {badge}
+            </Badge>
+          ))}
+        </div>
+      )}
+
+      {body && <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed">{body}</p>}
+
+      {footer && (
+        <div className="mt-4 rounded-sm border-l-2 border-accent bg-accent/8 p-3">
+          <p className="text-2xs font-semibold uppercase tracking-wider text-accent">{footer.label}</p>
+          <p className="mt-1 whitespace-pre-wrap text-sm">{footer.text}</p>
+        </div>
+      )}
+    </article>
+  );
+}
 
 export default CompanyDetail;

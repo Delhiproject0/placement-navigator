@@ -17,7 +17,6 @@ export default defineConfig({
     env: {
       VITE_SUPABASE_URL: "https://test.supabase.co",
       VITE_SUPABASE_ANON_KEY: "test-anon-key",
-      VITE_SUPABASE_PROJECT_ID: "test",
     },
     include: ["tests/**/*.test.{ts,tsx}"],
     // Playwright specs live under e2e/ and are driven by their own runner.

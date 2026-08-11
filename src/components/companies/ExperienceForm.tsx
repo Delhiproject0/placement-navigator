@@ -1,135 +1,165 @@
-import { useState } from "react";
-import { useAuth } from "@/hooks/useAuth";
-import { supabase } from "@/integrations/supabase/client";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
-import { errorMessage } from "@/lib/errors";
+import { experienceSchema, type ExperienceFormValues } from "@/lib/schemas";
+import { useSaveExperience } from "@/hooks/queries";
+import { ApiError } from "@/lib/api";
+import type { InterviewExperience } from "@/types/database";
 
 interface ExperienceFormProps {
   companyId: string;
+  /** Present when editing. The create and edit forms are the same component
+      deliberately - they used to diverge, with Selects on create and free-text
+      Inputs on edit, so editing could introduce a value create would reject. */
+  experience?: InterviewExperience;
   onSuccess: () => void;
+  onCancel?: () => void;
 }
 
-export const ExperienceForm = ({ companyId, onSuccess }: ExperienceFormProps) => {
-  const { user } = useAuth();
-  const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    round_name: "",
-    experience: "",
-    difficulty: "",
-    result: "",
-    tips: "",
+const DIFFICULTIES = ["Easy", "Medium", "Hard"] as const;
+const RESULTS = ["Selected", "Not Selected", "Pending"] as const;
+
+export const ExperienceForm = ({
+  companyId,
+  experience,
+  onSuccess,
+  onCancel,
+}: ExperienceFormProps) => {
+  const save = useSaveExperience(companyId);
+
+  const form = useForm<ExperienceFormValues>({
+    resolver: zodResolver(experienceSchema),
+    defaultValues: {
+      round_name: experience?.round_name ?? "",
+      experience: experience?.experience ?? "",
+      difficulty: (experience?.difficulty as ExperienceFormValues["difficulty"]) ?? "",
+      result: (experience?.result as ExperienceFormValues["result"]) ?? "",
+      tips: experience?.tips ?? "",
+    },
   });
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
+  const { errors } = form.formState;
+  const body = form.watch("experience") ?? "";
 
-    setLoading(true);
-
+  const onSubmit = form.handleSubmit(async (values) => {
     try {
-      const { error } = await supabase.from("interview_experiences").insert({
-        company_id: companyId,
-        user_id: user.id,
-        round_name: formData.round_name,
-        experience: formData.experience,
-        difficulty: formData.difficulty || null,
-        result: formData.result || null,
-        tips: formData.tips || null,
+      await save.mutateAsync({
+        id: experience?.id,
+        round_name: values.round_name.trim(),
+        experience: values.experience.trim(),
+        difficulty: values.difficulty || null,
+        result: values.result || null,
+        tips: values.tips?.trim() || null,
       });
-
-      if (error) throw error;
-
-      toast.success("Experience shared successfully");
+      form.reset();
       onSuccess();
     } catch (error) {
-      toast.error(errorMessage(error));
-    } finally {
-      setLoading(false);
+      if (error instanceof ApiError && error.details) {
+        for (const [field, message] of Object.entries(error.details)) {
+          form.setError(field as keyof ExperienceFormValues, { message });
+        }
+      }
     }
-  };
+  });
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="space-y-2">
-        <Label htmlFor="round_name">Round Name *</Label>
+    <form onSubmit={onSubmit} className="space-y-4" noValidate>
+      <div className="space-y-1.5">
+        <Label htmlFor="round_name">
+          Round<span className="ml-0.5 text-destructive">*</span>
+        </Label>
         <Input
           id="round_name"
-          value={formData.round_name}
-          onChange={(e) => setFormData({ ...formData, round_name: e.target.value })}
-          placeholder="e.g., Technical Round 1, HR Round"
-          required
+          placeholder="Online Assessment, Technical Interview 1, HR..."
+          {...form.register("round_name")}
         />
+        {errors.round_name && <p className="text-xs text-destructive">{errors.round_name.message}</p>}
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="experience">Your Experience *</Label>
+      <div className="space-y-1.5">
+        <div className="flex items-baseline justify-between">
+          <Label htmlFor="experience">
+            What happened<span className="ml-0.5 text-destructive">*</span>
+          </Label>
+          <span className="font-mono text-2xs tabular text-muted-foreground">{body.length}</span>
+        </div>
         <Textarea
           id="experience"
-          value={formData.experience}
-          onChange={(e) => setFormData({ ...formData, experience: e.target.value })}
-          placeholder="Share your interview experience in detail..."
-          rows={5}
-          required
+          rows={7}
+          placeholder="How long was it, what was asked, how many cleared - the detail you wish you had known beforehand."
+          {...form.register("experience")}
         />
+        {errors.experience && <p className="text-xs text-destructive">{errors.experience.message}</p>}
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-1.5">
           <Label htmlFor="difficulty">Difficulty</Label>
           <Select
-            value={formData.difficulty}
-            onValueChange={(value) => setFormData({ ...formData, difficulty: value })}
+            value={form.watch("difficulty") || ""}
+            onValueChange={(value) =>
+              form.setValue("difficulty", value as ExperienceFormValues["difficulty"], {
+                shouldDirty: true,
+              })
+            }
           >
-            <SelectTrigger>
-              <SelectValue placeholder="Select difficulty" />
+            <SelectTrigger id="difficulty">
+              <SelectValue placeholder="Not stated" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="Easy">Easy</SelectItem>
-              <SelectItem value="Medium">Medium</SelectItem>
-              <SelectItem value="Hard">Hard</SelectItem>
+              {DIFFICULTIES.map((level) => (
+                <SelectItem key={level} value={level}>
+                  {level}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="result">Result</Label>
+        <div className="space-y-1.5">
+          <Label htmlFor="result">Outcome</Label>
           <Select
-            value={formData.result}
-            onValueChange={(value) => setFormData({ ...formData, result: value })}
+            value={form.watch("result") || ""}
+            onValueChange={(value) =>
+              form.setValue("result", value as ExperienceFormValues["result"], { shouldDirty: true })
+            }
           >
-            <SelectTrigger>
-              <SelectValue placeholder="Select result" />
+            <SelectTrigger id="result">
+              <SelectValue placeholder="Not stated" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="Selected">Selected</SelectItem>
-              <SelectItem value="Not Selected">Not Selected</SelectItem>
-              <SelectItem value="Pending">Pending</SelectItem>
+              {RESULTS.map((outcome) => (
+                <SelectItem key={outcome} value={outcome}>
+                  {outcome}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
+          {errors.result && <p className="text-xs text-destructive">{errors.result.message}</p>}
         </div>
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="tips">Tips for Others</Label>
-        <Textarea
-          id="tips"
-          value={formData.tips}
-          onChange={(e) => setFormData({ ...formData, tips: e.target.value })}
-          placeholder="Any tips or advice for others..."
-          rows={3}
-        />
+      <div className="space-y-1.5">
+        <Label htmlFor="tips">Tips for the next batch</Label>
+        <Textarea id="tips" rows={3} {...form.register("tips")} />
       </div>
 
-      <Button type="submit" className="w-full" disabled={loading}>
-        {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-        Share Experience
-      </Button>
+      <div className="flex justify-end gap-2 border-t border-border pt-4">
+        {onCancel && (
+          <Button type="button" variant="outline" onClick={onCancel}>
+            Cancel
+          </Button>
+        )}
+        <Button type="submit" disabled={save.isPending}>
+          {save.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          {experience ? "Save changes" : "Share experience"}
+        </Button>
+      </div>
     </form>
   );
 };

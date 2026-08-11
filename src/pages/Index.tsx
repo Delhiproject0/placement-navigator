@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { useCompanies } from "@/hooks/queries";
 import { Layout } from "@/components/layout/Layout";
 import { PhaseChip } from "@/components/companies/PhaseChip";
 import { DeadlinePill } from "@/components/companies/DeadlinePill";
@@ -23,24 +23,8 @@ interface Stats {
 }
 
 const Index = () => {
-  const [companies, setCompanies] = useState<Company[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    supabase
-      .from("companies")
-      .select("*")
-      .then(({ data, error }) => {
-        if (cancelled) return;
-        if (error) console.error("Error loading companies:", error);
-        setCompanies((data ?? []) as Company[]);
-        setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const { data, isPending: loading } = useCompanies();
+  const companies = useMemo(() => data ?? [], [data]);
 
   const { stats, openDrives, recent } = useMemo(() => {
     const now = Date.now();

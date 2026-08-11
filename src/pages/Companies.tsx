@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { supabase } from "@/integrations/supabase/client";
+import { useCompanies } from "@/hooks/queries";
 import { Layout } from "@/components/layout/Layout";
 import { CompanyTable, type SortKey, type SortState } from "@/components/companies/CompanyTable";
 import { CompanyForm } from "@/components/companies/CompanyForm";
@@ -13,12 +13,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Plus, Search, X } from "lucide-react";
 import { PHASES, phaseMeta, phaseRank, resolvePhase, isPhase, type Phase } from "@/lib/phase";
 import { parseCtcToNumber } from "@/lib/ctc";
-import type { Company } from "@/types/database";
 
 const Companies = () => {
   const { canEdit } = useAuth();
-  const [companies, setCompanies] = useState<Company[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data, isPending: loading } = useCompanies();
+  const companies = useMemo(() => data ?? [], [data]);
   const [dialogOpen, setDialogOpen] = useState(false);
 
   /**
@@ -50,32 +49,6 @@ const Companies = () => {
     // descending, which is what you want for dates and money.
     next.set("dir", sort.key === key && sort.direction === "desc" ? "asc" : "desc");
     setSearchParams(next, { replace: true });
-  };
-
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      const { data, error } = await supabase
-        .from("companies")
-        .select("*")
-        .order("created_at", { ascending: false });
-      if (cancelled) return;
-      if (error) console.error("Error fetching companies:", error);
-      setCompanies((data ?? []) as Company[]);
-      setLoading(false);
-    };
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const refetch = async () => {
-    const { data } = await supabase
-      .from("companies")
-      .select("*")
-      .order("created_at", { ascending: false });
-    setCompanies((data ?? []) as Company[]);
   };
 
   const visible = useMemo(() => {
@@ -160,12 +133,7 @@ const Companies = () => {
                 <DialogHeader>
                   <DialogTitle className="font-display">Add a company</DialogTitle>
                 </DialogHeader>
-                <CompanyForm
-                  onSuccess={() => {
-                    setDialogOpen(false);
-                    void refetch();
-                  }}
-                />
+                <CompanyForm onSuccess={() => setDialogOpen(false)} />
               </DialogContent>
             </Dialog>
           )}

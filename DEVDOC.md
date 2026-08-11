@@ -83,10 +83,12 @@ Two grant subtleties that will bite anyone editing the migrations:
 | `VITE_SUPABASE_PROJECT_ID` | Project ref, e.g. `jwaqisnpxkavkkjzvutl` |
 | `VITE_SUPABASE_URL` | `https://<ref>.supabase.co` |
 | `VITE_SUPABASE_ANON_KEY` | Project Settings → API → anon/public |
+| `VITE_API_URL` | Optional. Overrides the API base so a dev server can point at a local stack. |
 
-The anon key is public by design. Anyone can read it out of the deployed bundle.
-Row-level security is the only thing protecting data - never treat the anon key
-as a secret, and never rely on a client-side role check for authorization.
+The anon key is public by design and is now only used as the `apikey` header
+the Supabase gateway expects in front of the edge function. The browser no
+longer holds `@supabase/supabase-js` at all and cannot reach PostgREST - all
+access goes through the API, authenticated with a token this project issued.
 
 ### Server-side (`.env`, no `VITE_` prefix - never bundled)
 

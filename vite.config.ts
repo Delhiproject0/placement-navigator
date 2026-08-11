@@ -15,14 +15,12 @@ export default defineConfig({
     },
   },
   build: {
-    // Recharts and supabase-js together are most of the bundle and change far
-    // less often than app code, so splitting them keeps the app chunk small
-    // and cacheable across deploys.
+    // React and recharts change far less often than app code, so splitting
+    // them keeps the app chunk small and cacheable across deploys.
     rollupOptions: {
       output: {
         manualChunks: {
           react: ["react", "react-dom", "react-router-dom"],
-          supabase: ["@supabase/supabase-js"],
           charts: ["recharts"],
         },
       },
