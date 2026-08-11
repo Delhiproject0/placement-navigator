@@ -62,18 +62,37 @@
      * in the company table. Mapping them onto four generic badge variants (the
      * previous approach) made two different phases render identically.
      */
+    /**
+     * Phase colours are a *status* palette, not a categorical one: they are
+     * reserved per phase, reused across chips, the table and the charts, and
+     * are never the sole carrier of identity - a label always accompanies them.
+     * The three neutral steps are deliberately low-chroma; "nothing is
+     * happening yet" should not look like an active state.
+     */
     --phase-announced: 218 14% 52%;
     --phase-registration-open: 168 44% 34%;
     --phase-registration-closed: 218 12% 45%;
     --phase-ppt: 262 44% 50%;
-    --phase-oa: 32 80% 44%;
+    /* Re-stepped away from the oxide of --phase-interviews-done: at 32 80% 44%
+       the two sat ΔE 8.4 apart in OKLab, which is below the threshold where
+       full-colour vision can separate them - and they appear on adjacent rows
+       of the companies table. */
+    --phase-oa: 54 92% 40%;
     --phase-interviews-done: 18 74% 45%;
     --phase-completed: 218 12% 38%;
     --phase-cancelled: 358 55% 45%;
 
-    /* Chart series, ordered for categorical use */
+    /**
+     * Chart series, assigned in this fixed order and never cycled.
+     *
+     * Both modes are validated with the dataviz palette checker rather than by
+     * eye: OKLCH lightness band, chroma floor, adjacent-pair separation under
+     * protan/deutan/tritan simulation, and contrast against the chart surface.
+     * The teal was originally 168 44% 34%, which sits at chroma 0.079 - under
+     * the floor, so it read as grey and stopped working as an identity.
+     */
     --chart-1: 18 74% 45%;
-    --chart-2: 168 44% 34%;
+    --chart-2: 168 70% 32%;
     --chart-3: 262 44% 50%;
     --chart-4: 32 80% 44%;
     --chart-5: 218 60% 45%;
@@ -160,17 +179,18 @@
     --phase-registration-open: 168 40% 48%;
     --phase-registration-closed: 220 10% 58%;
     --phase-ppt: 262 50% 66%;
-    --phase-oa: 32 78% 58%;
+    --phase-oa: 54 95% 31%;
     --phase-interviews-done: 20 82% 58%;
     --phase-completed: 220 10% 52%;
     --phase-cancelled: 358 60% 60%;
 
-    --chart-1: 20 82% 58%;
-    --chart-2: 168 40% 48%;
-    --chart-3: 262 50% 66%;
-    --chart-4: 32 78% 58%;
-    --chart-5: 218 66% 62%;
-    --chart-6: 358 60% 60%;
+    /* Re-stepped for the dark surface, not inverted from the light set. */
+    --chart-1: 20 61% 53%;
+    --chart-2: 168 97% 33%;
+    --chart-3: 262 50% 65%;
+    --chart-4: 32 73% 45%;
+    --chart-5: 218 67% 62%;
+    --chart-6: 358 56% 62%;
 
     /* Shadows need more opacity and less spread to read on a dark ground. */
     --shadow-xs: 0 1px 2px hsl(0 0% 0% / 0.3);

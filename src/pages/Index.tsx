@@ -208,7 +208,7 @@ function Stat({ label, value, accent }: { label: string; value: string | null; a
         {label}
       </dt>
       <dd
-        className={`mt-1.5 font-display text-3xl font-semibold tabular ${accent ? "text-primary" : ""}`}
+        className={`mt-1.5 font-display text-3xl font-semibold ${accent ? "text-primary" : ""}`}
       >
         {value === null ? <Shimmer className="h-8 w-16 rounded-sm" /> : value}
       </dd>

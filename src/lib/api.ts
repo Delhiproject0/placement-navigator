@@ -250,6 +250,33 @@ export interface Attachment {
   created_at: string;
 }
 
+export const APPLICATION_STAGES = [
+  "interested",
+  "applied",
+  "shortlisted",
+  "oa",
+  "interviewing",
+  "offered",
+  "rejected",
+  "withdrawn",
+  "accepted",
+] as const;
+
+export type ApplicationStage = (typeof APPLICATION_STAGES)[number];
+
+export interface Application {
+  id: string;
+  user_id: string;
+  company_id: string;
+  stage: ApplicationStage;
+  notes: string | null;
+  applied_at: string | null;
+  outcome_at: string | null;
+  created_at: string;
+  updated_at: string;
+  companies?: Company | null;
+}
+
 export interface AdminUser {
   id: string;
   email: string;
@@ -366,6 +393,41 @@ export const api = {
         experiences: Array<InterviewExperience & { companies: Company | null }>;
         questions: Array<InterviewQuestion & { companies: Company | null }>;
       }>("/me/contributions"),
+  },
+
+  tracking: {
+    bookmarks: () =>
+      request<{ bookmarks: Array<{ id: string; created_at: string; companies: Company }> }>(
+        "/me/bookmarks",
+      ).then((r) => r.bookmarks),
+
+    bookmarkIds: () =>
+      request<{ company_ids: string[] }>("/me/bookmarks/ids").then((r) => r.company_ids),
+
+    addBookmark: (companyId: string) =>
+      request<{ success: boolean }>("/me/bookmarks", {
+        method: "POST",
+        body: { company_id: companyId },
+      }),
+
+    removeBookmark: (companyId: string) =>
+      request<{ success: boolean }>(`/me/bookmarks/${companyId}`, { method: "DELETE" }),
+
+    applications: () =>
+      request<{ applications: Application[] }>("/me/applications").then((r) => r.applications),
+
+    saveApplication: (input: { company_id: string; stage?: ApplicationStage; notes?: string | null }) =>
+      request<{ application: Application }>("/me/applications", { method: "POST", body: input }).then(
+        (r) => r.application,
+      ),
+
+    removeApplication: (companyId: string) =>
+      request<{ success: boolean }>(`/me/applications/${companyId}`, { method: "DELETE" }),
+
+    forCompany: (companyId: string) =>
+      request<{ bookmarked: boolean; application: Application | null }>(
+        `/companies/${companyId}/tracking`,
+      ),
   },
 
   attachments: {

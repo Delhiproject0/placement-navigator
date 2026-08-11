@@ -25,6 +25,12 @@ export const qk = {
   me: {
     profile: ["me", "profile"] as const,
     contributions: ["me", "contributions"] as const,
+    bookmarks: ["me", "bookmarks"] as const,
+    bookmarkIds: ["me", "bookmarks", "ids"] as const,
+    applications: ["me", "applications"] as const,
+  },
+  tracking: {
+    forCompany: (companyId: string) => ["tracking", companyId] as const,
   },
   admin: {
     users: (search: string, page: number) => ["admin", "users", search, page] as const,

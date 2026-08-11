@@ -24,6 +24,7 @@ import * as contributions from "./routes/contributions.ts";
 import * as admin from "./routes/admin.ts";
 import * as storage from "./routes/storage.ts";
 import * as profile from "./routes/profile.ts";
+import * as tracking from "./routes/tracking.ts";
 
 /** Strips the function mount prefix, leaving a leading-slash path. */
 function routePath(pathname: string): string {
@@ -95,6 +96,38 @@ Deno.serve(async (req) => {
       const denied = requireUser(caller);
       if (denied) return denied;
       return await contributions.listMine(caller!);
+    }
+
+    // ------------------------------------------------------------- tracking
+    if (segments[0] === "me" && (segments[1] === "bookmarks" || segments[1] === "applications")) {
+      const denied = requireUser(caller);
+      if (denied) return denied;
+      const isBookmarks = segments[1] === "bookmarks";
+
+      if (method === "GET" && segments.length === 2) {
+        return isBookmarks
+          ? await tracking.listBookmarks(caller!)
+          : await tracking.listApplications(caller!);
+      }
+      if (method === "GET" && segments[2] === "ids" && isBookmarks) {
+        return await tracking.listBookmarkIds(caller!);
+      }
+      if (method === "POST" && segments.length === 2) {
+        return isBookmarks
+          ? await tracking.addBookmark(req, caller!)
+          : await tracking.upsertApplication(req, caller!);
+      }
+      if (method === "DELETE" && segments.length === 3) {
+        return isBookmarks
+          ? await tracking.removeBookmark(segments[2], caller!)
+          : await tracking.removeApplication(segments[2], caller!);
+      }
+    }
+
+    if (method === "GET" && segments[0] === "companies" && segments[2] === "tracking") {
+      const denied = requireUser(caller);
+      if (denied) return denied;
+      return await tracking.trackingForCompany(segments[1], caller!);
     }
 
     // --------------------------------------------------------- companies (w)

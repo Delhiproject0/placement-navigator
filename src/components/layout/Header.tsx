@@ -14,7 +14,7 @@ import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/s
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
-import { BookMarked, LayoutGrid, LogOut, Menu, Shield, User as UserIcon } from "lucide-react";
+import { BarChart3, BookMarked, LayoutGrid, LogOut, Menu, Shield, User as UserIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface NavItem {
@@ -27,6 +27,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { to: "/companies", label: "Companies", icon: LayoutGrid },
+  { to: "/analytics", label: "Analytics", icon: BarChart3 },
   { to: "/me/bookmarks", label: "Saved", icon: BookMarked, authOnly: true },
   { to: "/admin", label: "Admin", icon: Shield, adminOnly: true },
 ];

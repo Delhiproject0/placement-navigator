@@ -20,6 +20,8 @@ import { CompanyForm } from "@/components/companies/CompanyForm";
 import { ExperienceForm } from "@/components/companies/ExperienceForm";
 import { QuestionForm } from "@/components/companies/QuestionForm";
 import { RoundTimeline } from "@/components/companies/RoundTimeline";
+import { TrackingControls } from "@/components/companies/TrackingControls";
+import { AttachmentsPanel } from "@/components/attachments/AttachmentsPanel";
 import { EmptyState } from "@/components/EmptyState";
 import { Shimmer } from "@/components/skeletons/CompanyTableSkeleton";
 import { Button } from "@/components/ui/button";
@@ -257,6 +259,7 @@ const CompanyDetail = () => {
                   {questions.length}
                 </span>
               </TabsTrigger>
+              <TabsTrigger value="documents">Documents</TabsTrigger>
             </TabsList>
 
             <TabsContent value="experiences" className="mt-5 space-y-3">
@@ -357,10 +360,24 @@ const CompanyDetail = () => {
                 ))
               )}
             </TabsContent>
+            <TabsContent value="documents" className="mt-5">
+              <AttachmentsPanel
+                entityType="company"
+                entityId={company.id}
+                canUpload={canEdit}
+                description={
+                  canEdit
+                    ? "Job descriptions, offer letters, question papers and feedback forms."
+                    : "Files attached by the placement team."
+                }
+              />
+            </TabsContent>
           </Tabs>
         </div>
 
         <aside className="space-y-5">
+          {user && <TrackingControls companyId={company.id} />}
+
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="font-display text-base">Schedule</CardTitle>

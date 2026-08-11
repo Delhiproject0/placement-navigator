@@ -13,7 +13,7 @@ import {
   type UseMutationOptions,
 } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { api, ApiError, type AdminUser } from "@/lib/api";
+import { api, ApiError, type AdminUser, type ApplicationStage } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 import type { Company, InterviewExperience, InterviewQuestion } from "@/types/database";
 
@@ -275,5 +275,94 @@ export function useDeleteAttachment(entityType: string, entityId: string) {
       toast.success("File removed");
     },
     ...mutationDefaults("Could not remove the file"),
+  });
+}
+
+// --- tracking (bookmarks and applications) ---------------------------------
+
+export function useBookmarks(enabled: boolean) {
+  return useQuery({
+    queryKey: qk.me.bookmarks,
+    queryFn: () => api.tracking.bookmarks(),
+    enabled,
+  });
+}
+
+export function useBookmarkIds(enabled: boolean) {
+  return useQuery({
+    queryKey: qk.me.bookmarkIds,
+    queryFn: () => api.tracking.bookmarkIds(),
+    enabled,
+  });
+}
+
+export function useCompanyTracking(companyId: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: qk.tracking.forCompany(companyId ?? ""),
+    queryFn: () => api.tracking.forCompany(companyId as string),
+    enabled: Boolean(companyId) && enabled,
+  });
+}
+
+export function useToggleBookmark(companyId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (bookmarked: boolean) =>
+      bookmarked ? api.tracking.removeBookmark(companyId) : api.tracking.addBookmark(companyId),
+    // Optimistic: saving a company should feel instant, and the failure path
+    // rolls the icon back rather than leaving it lying.
+    onMutate: async (bookmarked) => {
+      const key = qk.tracking.forCompany(companyId);
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData(key);
+      queryClient.setQueryData(key, (old: { bookmarked: boolean } | undefined) =>
+        old ? { ...old, bookmarked: !bookmarked } : old,
+      );
+      return { previous, key };
+    },
+    onError: (error, _variables, context) => {
+      if (context) queryClient.setQueryData(context.key, context.previous);
+      notifyError(error, "Could not update your saved companies");
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: qk.tracking.forCompany(companyId) });
+      queryClient.invalidateQueries({ queryKey: qk.me.bookmarks });
+      queryClient.invalidateQueries({ queryKey: qk.me.bookmarkIds });
+    },
+  });
+}
+
+export function useApplications(enabled: boolean) {
+  return useQuery({
+    queryKey: qk.me.applications,
+    queryFn: () => api.tracking.applications(),
+    enabled,
+  });
+}
+
+export function useSaveApplication() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { company_id: string; stage?: ApplicationStage; notes?: string | null }) =>
+      api.tracking.saveApplication(input),
+    onSuccess: (application) => {
+      queryClient.invalidateQueries({ queryKey: qk.me.applications });
+      queryClient.invalidateQueries({ queryKey: qk.tracking.forCompany(application.company_id) });
+      toast.success("Application updated");
+    },
+    ...mutationDefaults("Could not update your application"),
+  });
+}
+
+export function useRemoveApplication() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (companyId: string) => api.tracking.removeApplication(companyId),
+    onSuccess: (_data, companyId) => {
+      queryClient.invalidateQueries({ queryKey: qk.me.applications });
+      queryClient.invalidateQueries({ queryKey: qk.tracking.forCompany(companyId) });
+      toast.success("Removed from your applications");
+    },
+    ...mutationDefaults("Could not remove that application"),
   });
 }
