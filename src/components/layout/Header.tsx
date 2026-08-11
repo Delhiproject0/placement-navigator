@@ -14,7 +14,7 @@ import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/s
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
-import { BarChart3, BookMarked, LayoutGrid, LogOut, Menu, Shield, User as UserIcon } from "lucide-react";
+import { BarChart3, BookMarked, CalendarDays, LayoutGrid, LogOut, Menu, Search, Shield, User as UserIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface NavItem {
@@ -27,6 +27,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { to: "/companies", label: "Companies", icon: LayoutGrid },
+  { to: "/calendar", label: "Calendar", icon: CalendarDays },
   { to: "/analytics", label: "Analytics", icon: BarChart3 },
   { to: "/me/bookmarks", label: "Saved", icon: BookMarked, authOnly: true },
   { to: "/admin", label: "Admin", icon: Shield, adminOnly: true },
@@ -100,6 +101,23 @@ export const Header = () => {
         </nav>
 
         <div className="flex flex-1 items-center justify-end gap-2 sm:gap-3">
+          <button
+            type="button"
+            onClick={() =>
+              document.dispatchEvent(
+                new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true }),
+              )
+            }
+            className="hidden items-center gap-2 rounded-sm border border-border bg-muted/40 py-1.5 pl-2.5 pr-2 text-sm text-muted-foreground transition-colors hover:text-foreground lg:flex"
+            aria-label="Search"
+          >
+            <Search className="h-3.5 w-3.5" />
+            <span>Search</span>
+            <kbd className="rounded-xs border border-border bg-background px-1 font-mono text-2xs">
+              {navigator.platform.toLowerCase().includes("mac") ? "\u2318" : "Ctrl"}K
+            </kbd>
+          </button>
+
           <ThemeToggle className="hidden sm:inline-flex" />
 
           {loading ? (

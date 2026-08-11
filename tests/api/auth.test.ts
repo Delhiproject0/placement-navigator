@@ -316,3 +316,147 @@ describe.runIf(!process.env.SKIP_API_TESTS)("validation", () => {
     expect((body as { error: { details: Record<string, string> } }).error.details).toHaveProperty("cgpa_cutoff");
   });
 });
+
+describe.runIf(!process.env.SKIP_API_TESTS)("csv import", () => {
+  it.runIf(stackUp)("refuses anyone below editor", async () => {
+    const student = await login("student@iiit.ac.in");
+    const body = JSON.stringify({ rows: [{ Company: "Nope" }] });
+
+    expect((await api("/import/companies", { method: "POST", body })).status).toBe(401);
+    expect(
+      (await api("/import/companies", { method: "POST", body }, student.access_token)).status,
+    ).toBe(403);
+  });
+
+  it.runIf(stackUp)("previews without writing anything", async () => {
+    const editor = await login("editor@iiit.ac.in");
+    const name = `Preview Only ${Date.now()}`;
+
+    const preview = await api(
+      "/import/companies",
+      { method: "POST", body: JSON.stringify({ rows: [{ Company: name }], dry_run: true }) },
+      editor.access_token,
+    );
+    expect(preview.status).toBe(200);
+    expect((preview.body as unknown as { to_create: number }).to_create).toBe(1);
+
+    const companies = await api("/companies");
+    const names = (companies.body as unknown as { companies: Array<{ name: string }> }).companies.map(
+      (company) => company.name,
+    );
+    expect(names).not.toContain(name);
+  });
+
+  it.runIf(stackUp)("reports bad rows by spreadsheet row number and skips them", async () => {
+    const editor = await login("editor@iiit.ac.in");
+    const { body } = await api(
+      "/import/companies",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          rows: [
+            { Company: "Fine Co" },
+            // numeric(3,2) cannot hold this; it must be caught before the insert.
+            { Company: "Bad CGPA", CGPA: "12.5" },
+            { Company: "" },
+          ],
+          dry_run: true,
+        }),
+      },
+      editor.access_token,
+    );
+
+    const result = body as unknown as {
+      valid: number;
+      issues: Array<{ row: number; field?: string }>;
+    };
+    expect(result.valid).toBe(1);
+    // Header is row 1, so the second data row is row 3 in the user's file.
+    expect(result.issues.map((issue) => issue.row)).toEqual([3, 4]);
+    expect(result.issues[0].field).toBe("cgpa_cutoff");
+  });
+
+  it.runIf(stackUp)("updates by name instead of creating a duplicate", async () => {
+    const editor = await login("editor@iiit.ac.in");
+    const name = `Idempotent Co ${Date.now()}`;
+    const rows = [{ Company: name, CTC: "20 LPA" }];
+
+    const first = await api(
+      "/import/companies",
+      { method: "POST", body: JSON.stringify({ rows, dry_run: false }) },
+      editor.access_token,
+    );
+    expect((first.body as unknown as { created: number }).created).toBe(1);
+
+    const second = await api(
+      "/import/companies",
+      { method: "POST", body: JSON.stringify({ rows, dry_run: false }) },
+      editor.access_token,
+    );
+    expect((second.body as unknown as { created: number; updated: number }).created).toBe(0);
+    expect((second.body as unknown as { updated: number }).updated).toBe(1);
+
+    const companies = await api("/companies");
+    const matches = (
+      companies.body as unknown as { companies: Array<{ name: string }> }
+    ).companies.filter((company) => company.name === name);
+    expect(matches).toHaveLength(1);
+  });
+});
+
+describe.runIf(!process.env.SKIP_API_TESTS)("calendar feed", () => {
+  it.runIf(stackUp)("serves a valid feed for a token and 404s for anything else", async () => {
+    const student = await login("student@iiit.ac.in");
+
+    const issued = await api("/calendar/token", { method: "POST" }, student.access_token);
+    expect(issued.status).toBe(200);
+    const token = (issued.body as unknown as { token: string }).token;
+    expect(token.length).toBeGreaterThan(20);
+
+    // The feed itself carries no Authorization header - the token is the
+    // credential, because calendar clients cannot send one.
+    const feed = await fetch(`${API}/calendar/${token}.ics`);
+    expect(feed.status).toBe(200);
+    expect(feed.headers.get("content-type")).toContain("text/calendar");
+
+    const text = await feed.text();
+    expect(text.startsWith("BEGIN:VCALENDAR")).toBe(true);
+    expect(text.trimEnd().endsWith("END:VCALENDAR")).toBe(true);
+
+    // Guessing a token must be indistinguishable from any other miss.
+    for (const bad of ["notarealtoken1234567890", "short", "%27or%201=1--"]) {
+      expect((await fetch(`${API}/calendar/${bad}.ics`)).status).toBe(404);
+    }
+  });
+
+  it.runIf(stackUp)("stops serving a revoked token", async () => {
+    const student = await login("student@iiit.ac.in");
+    const issued = await api("/calendar/token", { method: "POST" }, student.access_token);
+    const token = (issued.body as unknown as { token: string }).token;
+
+    expect((await fetch(`${API}/calendar/${token}.ics`)).status).toBe(200);
+
+    await api("/calendar/token", { method: "DELETE" }, student.access_token);
+    expect((await fetch(`${API}/calendar/${token}.ics`)).status).toBe(404);
+  });
+
+  it.runIf(stackUp)("rotating invalidates the previous link", async () => {
+    const student = await login("student@iiit.ac.in");
+    const first = (
+      (await api("/calendar/token", { method: "POST" }, student.access_token))
+        .body as unknown as { token: string }
+    ).token;
+    const second = (
+      (await api("/calendar/token", { method: "POST" }, student.access_token))
+        .body as unknown as { token: string }
+    ).token;
+
+    expect(second).not.toBe(first);
+    expect((await fetch(`${API}/calendar/${first}.ics`)).status).toBe(404);
+    expect((await fetch(`${API}/calendar/${second}.ics`)).status).toBe(200);
+  });
+
+  it.runIf(stackUp)("keeps the token out of reach of the anon key", async () => {
+    expect((await api("/calendar/token")).status).toBe(401);
+  });
+});

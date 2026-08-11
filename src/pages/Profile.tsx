@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { KeyRound, Loader2, LogOut } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
 import { AttachmentsPanel } from "@/components/attachments/AttachmentsPanel";
+import { CalendarSubscription } from "@/components/CalendarSubscription";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -160,6 +161,8 @@ const Profile = () => {
               </CardContent>
             </Card>
           )}
+
+          <CalendarSubscription />
 
           <Card>
             <CardHeader className="pb-4">

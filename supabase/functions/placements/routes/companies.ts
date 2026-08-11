@@ -32,12 +32,12 @@ const WRITABLE = [
 
 const STATUSES = new Set(["upcoming", "ongoing", "completed", "cancelled"]);
 
-interface ValidationResult {
+export interface ValidationResult {
   values: Record<string, unknown>;
   errors: Record<string, string>;
 }
 
-function pickWritable(body: Record<string, unknown>): ValidationResult {
+export function pickWritable(body: Record<string, unknown>): ValidationResult {
   const values: Record<string, unknown> = {};
   const errors: Record<string, string> = {};
 

@@ -40,10 +40,11 @@ function mutationDefaults<TData, TVariables>(
 
 // --- companies -------------------------------------------------------------
 
-export function useCompanies(search?: string) {
+export function useCompanies(search?: string, enabled = true) {
   return useQuery({
     queryKey: qk.companies.list(search),
     queryFn: () => api.companies.list(search),
+    enabled,
   });
 }
 

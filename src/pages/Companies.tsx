@@ -5,20 +5,23 @@ import { useCompanies } from "@/hooks/queries";
 import { Layout } from "@/components/layout/Layout";
 import { CompanyTable, type SortKey, type SortState } from "@/components/companies/CompanyTable";
 import { CompanyForm } from "@/components/companies/CompanyForm";
+import { ImportDialog } from "@/components/companies/ImportDialog";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Search, X } from "lucide-react";
+import { Download, Plus, Search, X } from "lucide-react";
 import { PHASES, phaseMeta, phaseRank, resolvePhase, isPhase, type Phase } from "@/lib/phase";
 import { parseCtcToNumber } from "@/lib/ctc";
+import { downloadCsv, toCsv } from "@/lib/csv";
+import { formatInISTHuman } from "@/lib/utils";
 
 const Companies = () => {
   const { canEdit } = useAuth();
   const { data, isPending: loading } = useCompanies();
   const companies = useMemo(() => data ?? [], [data]);
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(() => new URLSearchParams(window.location.search).has("new"));
 
   /**
    * Filter and sort state lives in the URL. The home page has always linked to
@@ -108,6 +111,29 @@ const Companies = () => {
 
   const hasFilters = Boolean(search) || phaseFilter !== "all";
 
+  const exportCsv = () => {
+    const csv = toCsv(visible, [
+      { header: "Company", value: (c) => c.name },
+      { header: "Phase", value: (c) => phaseMeta(resolvePhase(c)).label },
+      { header: "Location", value: (c) => c.job_location },
+      { header: "CTC", value: (c) => c.offered_ctc },
+      { header: "CTC breakdown", value: (c) => c.ctc_distribution },
+      { header: "CGPA", value: (c) => c.cgpa_cutoff },
+      { header: "Roles", value: (c) => c.roles?.join(", ") },
+      { header: "Selected", value: (c) => c.people_selected },
+      { header: "Deadline", value: (c) => formatInISTHuman(c.registration_deadline) },
+      { header: "PPT", value: (c) => formatInISTHuman(c.ppt_datetime) },
+      { header: "OA", value: (c) => formatInISTHuman(c.oa_datetime) },
+      { header: "Interview", value: (c) => formatInISTHuman(c.interview_datetime) },
+      { header: "Website", value: (c) => c.website_url },
+      { header: "Form", value: (c) => c.external_form },
+      { header: "Bond", value: (c) => c.bond_details },
+      { header: "Eligibility", value: (c) => c.eligibility_criteria },
+      { header: "Description", value: (c) => c.description },
+    ]);
+    downloadCsv(`placetrack-companies-${new Date().toISOString().slice(0, 10)}.csv`, csv);
+  };
+
   return (
     <Layout>
       <div className="container py-8 md:py-10">
@@ -121,7 +147,15 @@ const Companies = () => {
             </p>
           </div>
 
-          {canEdit && (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" onClick={exportCsv} disabled={visible.length === 0}>
+              <Download className="mr-2 h-4 w-4" />
+              Export
+            </Button>
+
+            {canEdit && <ImportDialog />}
+
+            {canEdit && (
             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
               <DialogTrigger asChild>
                 <Button>
@@ -136,7 +170,8 @@ const Companies = () => {
                 <CompanyForm onSuccess={() => setDialogOpen(false)} />
               </DialogContent>
             </Dialog>
-          )}
+            )}
+          </div>
         </div>
 
         <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center">

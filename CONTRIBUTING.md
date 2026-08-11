@@ -37,7 +37,7 @@ it - a table with RLS off is world-writable through the public anon key. See
 - Pure logic (`src/lib/**`) gets unit tests.
 - Components and hooks get tests with Testing Library, with Supabase mocked at
   the HTTP layer by MSW.
-- Flows that cross pages get a Playwright spec.
 
-Tests never touch the production database. The e2e suite runs against a local
-`supabase start`.
+Tests never touch the production database. The API tests run against a local
+`supabase start` plus `supabase functions serve`, and skip themselves when that
+stack is not up.

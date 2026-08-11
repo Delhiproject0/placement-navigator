@@ -8,6 +8,7 @@ import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { ScrollToTop } from "@/components/ScrollToTop";
+import { CommandPalette } from "@/components/CommandPalette";
 import { Layout } from "@/components/layout/Layout";
 import { Shimmer } from "@/components/skeletons/CompanyTableSkeleton";
 import { ApiError } from "@/lib/api";
@@ -25,6 +26,7 @@ const Bookmarks = lazy(() => import("./pages/Bookmarks"));
 const Applications = lazy(() => import("./pages/Applications"));
 const Contributions = lazy(() => import("./pages/Contributions"));
 const Analytics = lazy(() => import("./pages/Analytics"));
+const CalendarPage = lazy(() => import("./pages/Calendar"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient({
@@ -67,6 +69,7 @@ const App = () => (
             <TooltipProvider delayDuration={200}>
               <Toaster />
               <ScrollToTop />
+              <CommandPalette />
               <Suspense fallback={<RouteFallback />}>
                 <Routes>
                   <Route path="/" element={<Index />} />
@@ -74,6 +77,7 @@ const App = () => (
                   <Route path="/companies" element={<Companies />} />
                   <Route path="/companies/:id" element={<CompanyDetail />} />
                   <Route path="/analytics" element={<Analytics />} />
+                  <Route path="/calendar" element={<CalendarPage />} />
 
                   <Route
                     path="/me"

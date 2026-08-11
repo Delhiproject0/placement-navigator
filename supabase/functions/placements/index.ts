@@ -25,6 +25,8 @@ import * as admin from "./routes/admin.ts";
 import * as storage from "./routes/storage.ts";
 import * as profile from "./routes/profile.ts";
 import * as tracking from "./routes/tracking.ts";
+import * as calendar from "./routes/calendar.ts";
+import { importCompanies } from "./routes/importer.ts";
 
 /** Strips the function mount prefix, leaving a leading-slash path. */
 function routePath(pathname: string): string {
@@ -70,6 +72,12 @@ Deno.serve(async (req) => {
     }
     if (method === "GET" && path === "/attachments") return await storage.listAttachments(url);
     if (method === "GET" && path === "/file-text") return await storage.handleFileText(url);
+
+    // Unauthenticated by design: calendar clients poll a bare URL and cannot
+    // send an Authorization header, so the token in the path authenticates it.
+    if (method === "GET" && segments[0] === "calendar" && segments[1] && segments[1] !== "token") {
+      return await calendar.serveCalendar(segments[1]);
+    }
 
     // ------------------------------------------------------------ identified
     const caller: Caller | null = await getCaller(req);
@@ -184,6 +192,22 @@ Deno.serve(async (req) => {
       const denied = requireUser(caller);
       if (denied) return denied;
       return await storage.handleDeleteFile(url, caller!);
+    }
+
+    // -------------------------------------------------------- calendar token
+    if (path === "/calendar/token") {
+      const denied = requireUser(caller);
+      if (denied) return denied;
+      if (method === "GET") return await calendar.getCalendarToken(caller!);
+      if (method === "POST") return await calendar.issueCalendarToken(caller!);
+      if (method === "DELETE") return await calendar.revokeCalendarToken(caller!);
+    }
+
+    // ------------------------------------------------------------- import
+    if (method === "POST" && path === "/import/companies") {
+      const denied = requireEditor(caller);
+      if (denied) return denied;
+      return await importCompanies(req);
     }
 
     // --------------------------------------------------------------- admin

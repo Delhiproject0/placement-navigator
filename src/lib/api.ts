@@ -277,6 +277,24 @@ export interface Application {
   companies?: Company | null;
 }
 
+export interface ImportIssue {
+  row: number;
+  field?: string;
+  message: string;
+}
+
+export interface ImportResult {
+  dry_run: boolean;
+  total: number;
+  valid: number;
+  to_create: number;
+  to_update: number;
+  issues: ImportIssue[];
+  created?: number;
+  updated?: number;
+  failures?: ImportIssue[];
+}
+
 export interface AdminUser {
   id: string;
   email: string;
@@ -439,6 +457,26 @@ export const api = {
 
     remove: (id: string) =>
       request<{ success: boolean }>(`/attachments?id=${id}`, { method: "DELETE" }),
+  },
+
+  calendar: {
+    getToken: () => request<{ token: string | null }>("/calendar/token"),
+    issueToken: () => request<{ token: string }>("/calendar/token", { method: "POST" }),
+    revokeToken: () => request<{ success: boolean }>("/calendar/token", { method: "DELETE" }),
+    /**
+     * Composed here rather than server-side: behind the gateway the function
+     * only sees its internal address, so it cannot know its own public URL.
+     */
+    feedUrl: (token: string) => `${API_BASE}/calendar/${token}.ics`,
+  },
+
+  companiesImport: {
+    /** Dry run by default - the UI shows the summary and the user confirms. */
+    run: (rows: Record<string, string>[], dryRun = true) =>
+      request<ImportResult>("/import/companies", {
+        method: "POST",
+        body: { rows, dry_run: dryRun },
+      }),
   },
 
   admin: {

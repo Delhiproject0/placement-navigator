@@ -67,7 +67,6 @@ each one comes from.
 | `npm run lint` | ESLint |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm test` | Unit and component tests |
-| `npm run test:e2e` | Playwright end-to-end |
 | `npm run db:push` | Apply migrations to the linked project |
 | `npm run gen:types` | Regenerate `src/integrations/supabase/types.ts` from the live schema |
 | `npm run fn:deploy` | Deploy the `placements` edge function |
