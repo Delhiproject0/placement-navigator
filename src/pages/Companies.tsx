@@ -13,11 +13,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Download, Plus, Search, X } from "lucide-react";
+import { FileDown, Plus, Search, X } from "lucide-react";
 import { PHASES, phaseMeta, phaseRank, resolvePhase, isPhase, type Phase } from "@/lib/phase";
 import { parseCtcToNumber } from "@/lib/ctc";
 import { downloadCsv, toCsv } from "@/lib/csv";
-import { formatInISTHuman } from "@/lib/utils";
+import { COMPANY_CSV_COLUMNS } from "@/lib/companyCsv";
 
 const Companies = () => {
   const { canEdit } = useAuth();
@@ -115,25 +115,7 @@ const Companies = () => {
   const hasFilters = Boolean(search) || phaseFilter !== "all";
 
   const exportCsv = () => {
-    const csv = toCsv(visible, [
-      { header: "Company", value: (c) => c.name },
-      { header: "Phase", value: (c) => phaseMeta(resolvePhase(c)).label },
-      { header: "Location", value: (c) => c.job_location },
-      { header: "CTC", value: (c) => c.offered_ctc },
-      { header: "CTC breakdown", value: (c) => c.ctc_distribution },
-      { header: "CGPA", value: (c) => c.cgpa_cutoff },
-      { header: "Roles", value: (c) => c.roles?.join(", ") },
-      { header: "Selected", value: (c) => c.people_selected },
-      { header: "Deadline", value: (c) => formatInISTHuman(c.registration_deadline) },
-      { header: "PPT", value: (c) => formatInISTHuman(c.ppt_datetime) },
-      { header: "OA", value: (c) => formatInISTHuman(c.oa_datetime) },
-      { header: "Interview", value: (c) => formatInISTHuman(c.interview_datetime) },
-      { header: "Website", value: (c) => c.website_url },
-      { header: "Form", value: (c) => c.external_form },
-      { header: "Bond", value: (c) => c.bond_details },
-      { header: "Eligibility", value: (c) => c.eligibility_criteria },
-      { header: "Description", value: (c) => c.description },
-    ]);
+    const csv = toCsv(visible, COMPANY_CSV_COLUMNS);
     // The season is in the filename because the rows carry no year of their
     // own: three exports taken a minute apart are otherwise indistinguishable,
     // and re-importing the wrong one is the mistake this prevents.
@@ -158,9 +140,12 @@ const Companies = () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {/* Paired with Import: both name the file type, so neither is
+                read as a bare direction. A lone down arrow next to "Export"
+                looks like something arriving. */}
             <Button variant="outline" onClick={exportCsv} disabled={visible.length === 0}>
-              <Download className="mr-2 h-4 w-4" />
-              Export
+              <FileDown className="mr-2 h-4 w-4" />
+              Export CSV
             </Button>
 
             {canEdit && <ImportDialog />}

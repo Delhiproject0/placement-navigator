@@ -58,8 +58,27 @@ export const Footer = () => (
 
     <div className="border-t border-border/70">
       <div className="container flex flex-col items-center justify-between gap-3 py-5 sm:flex-row">
+        {/* A normal paragraph with an inline-flex link, not a flex row: a flex
+            gap would push the full stop away from "ADK DEV". */}
         <p className="text-xs text-muted-foreground">
-          Built for IIIT Hyderabad. Data contributed by students.
+          Built for IIIT Hyderabad by{" "}
+          <a
+            href="https://dileepadari.dev"
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex translate-y-[0.1em] items-center gap-1 font-medium text-foreground transition-opacity hover:opacity-75"
+          >
+            <img src="/adk-mark-color.png" alt="" width={14} height={14} className="h-3.5 w-3.5 dark:hidden" />
+            <img
+              src="/adk-mark-light.png"
+              alt=""
+              width={14}
+              height={14}
+              className="hidden h-3.5 w-3.5 dark:block"
+            />
+            ADK DEV
+          </a>
+          . Data contributed by students.
         </p>
         <a
           href="https://github.com/Dileepadari/placement-navigator"

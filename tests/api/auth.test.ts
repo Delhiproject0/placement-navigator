@@ -12,6 +12,8 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { parseCsvObjects } from "@/lib/csv";
+import { buildCompanyCsvTemplate, IMPORTABLE_CSV_HEADERS } from "@/lib/companyCsv";
 
 const API = process.env.PLACEMENTS_API_URL ?? "http://127.0.0.1:54321/functions/v1/placements";
 const SEED_PASSWORD = "placement123";
@@ -406,6 +408,29 @@ describe.runIf(!process.env.SKIP_API_TESTS)("csv import", () => {
     // local database grow without bound and any count-based assertion drift.
     const admin = await login("admin@iiit.ac.in");
     await api(`/companies/${matches[0].id}`, { method: "DELETE" }, admin.access_token);
+  });
+
+  it.runIf(stackUp)("accepts the template it offers people to download", async () => {
+    // The template's headers live in the browser bundle and the aliases that
+    // recognise them live in the edge function. Nothing but this test connects
+    // the two, so a column renamed on one side would otherwise be discovered
+    // by whoever downloaded the template and had every field silently ignored.
+    const editor = await login("editor@iiit.ac.in");
+    const parsed = parseCsvObjects(buildCompanyCsvTemplate());
+
+    expect(parsed.headers).toEqual(IMPORTABLE_CSV_HEADERS);
+    expect(parsed.rows).toHaveLength(1);
+
+    const { status, body } = await api(
+      "/import/companies",
+      { method: "POST", body: JSON.stringify({ rows: parsed.rows, dry_run: true }) },
+      editor.access_token,
+    );
+
+    expect(status).toBe(200);
+    const result = body as unknown as { valid: number; issues: unknown[] };
+    expect(result.issues).toEqual([]);
+    expect(result.valid).toBe(1);
   });
 });
 

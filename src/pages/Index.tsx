@@ -6,6 +6,7 @@ import { Seo } from "@/components/Seo";
 import { PhaseChip } from "@/components/companies/PhaseChip";
 import { DeadlinePill } from "@/components/companies/DeadlinePill";
 import { CompanyLogo } from "@/components/companies/CompanyLogo";
+import { DeadlineTicker } from "@/components/DeadlineTicker";
 import { EmptyState } from "@/components/EmptyState";
 import { Shimmer } from "@/components/skeletons/CompanyTableSkeleton";
 import { Button } from "@/components/ui/button";
@@ -27,7 +28,7 @@ const Index = () => {
   const { data, isPending: loading } = useCompanies();
   const companies = useMemo(() => data ?? [], [data]);
 
-  const { stats, openDrives, recent } = useMemo(() => {
+  const { stats, openDrives, allOpen, recent } = useMemo(() => {
     const now = Date.now();
     const week = now + 7 * 86_400_000;
 
@@ -41,11 +42,15 @@ const Index = () => {
 
     // Registration still open, soonest deadline first - the only list on this
     // page that is genuinely actionable, so it leads.
-    const open = withPhase
+    const openByDeadline = withPhase
       .filter((entry) => entry.phase === "registration_open")
       .sort((a, b) => (a.deadline ?? Infinity) - (b.deadline ?? Infinity))
-      .slice(0, 6)
       .map((entry) => entry.company);
+
+    // The card shows a readable handful; the ticker gets all of them. Feeding
+    // the ticker the card's six meant it never had enough to fill the strip,
+    // which is the whole reason a scrolling strip exists.
+    const open = openByDeadline.slice(0, 6);
 
     const finished = withPhase
       .filter((entry) => entry.phase === "interviews_done" || entry.phase === "completed")
@@ -70,6 +75,7 @@ const Index = () => {
 
     return {
       openDrives: open,
+      allOpen: openByDeadline,
       recent: finished,
       stats: {
         total: companies.length,
@@ -82,10 +88,6 @@ const Index = () => {
       } satisfies Stats,
     };
   }, [companies]);
-
-  // Duplicated so the marquee can loop seamlessly - the animation translates
-  // exactly -50%, landing the copy where the original started.
-  const tickerItems = openDrives.length ? [...openDrives, ...openDrives] : [];
 
   return (
     <Layout>
@@ -156,23 +158,7 @@ const Index = () => {
         </div>
 
         {/* Deadline ticker. Fades at both edges rather than being clipped. */}
-        {tickerItems.length > 0 && (
-          <div className="mask-fade-x relative border-t border-border bg-card/50 py-2.5">
-            <div className="animate-marquee flex w-max gap-8 hover:[animation-play-state:paused]">
-              {tickerItems.map((company, index) => (
-                <Link
-                  key={`${company.id}-${index}`}
-                  to={`/companies/${company.id}`}
-                  className="flex shrink-0 items-center gap-2.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
-                >
-                  <span className="h-1 w-1 rounded-[999px] bg-primary/60" aria-hidden />
-                  <span className="font-medium text-foreground">{company.name}</span>
-                  <DeadlinePill deadline={company.registration_deadline} />
-                </Link>
-              ))}
-            </div>
-          </div>
-        )}
+        <DeadlineTicker companies={allOpen} />
       </section>
 
       <div className="container grid gap-10 py-14 lg:grid-cols-2">

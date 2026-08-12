@@ -76,20 +76,24 @@ export const Header = () => {
     <header className="sticky top-0 z-50 w-full border-b border-border/70 bg-background/85 backdrop-blur-md supports-[backdrop-filter]:bg-background/65">
       <div className="container flex h-16 items-center gap-6">
         <Link to="/" className="flex shrink-0 items-center gap-2.5">
-          {/* The mark is a stylised drive timeline: three stages, the last live. */}
-          <svg viewBox="0 0 28 28" className="h-7 w-7" aria-hidden>
-            <rect
-              x="1"
-              y="1"
-              width="26"
-              height="26"
-              rx="8"
-              className="fill-secondary"
-            />
-            <circle cx="8.5" cy="14" r="2" className="fill-primary-foreground/45" />
-            <circle cx="14" cy="14" r="2" className="fill-primary-foreground/70" />
-            <circle cx="19.5" cy="14" r="3" className="fill-primary" />
-          </svg>
+          {/* The ADK DEV mark, cropped from the brand artwork rather than
+              redrawn, so it stays identical to the portfolio. Two files rather
+              than one recoloured SVG: the brand purple is too dark to read on
+              the dark theme, which uses the white cut instead. */}
+          <img
+            src="/adk-mark-color.png"
+            alt=""
+            width={28}
+            height={28}
+            className="h-7 w-7 dark:hidden"
+          />
+          <img
+            src="/adk-mark-light.png"
+            alt=""
+            width={28}
+            height={28}
+            className="hidden h-7 w-7 dark:block"
+          />
           <span className="font-display text-lg font-semibold tracking-tight">PlaceTrack</span>
         </Link>
 

@@ -1,7 +1,14 @@
 import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { AlertTriangle, CalendarRange, CheckCircle2, FileUp, Loader2, Upload } from "lucide-react";
+import {
+  AlertTriangle,
+  CalendarRange,
+  CheckCircle2,
+  Download,
+  FileUp,
+  Loader2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -14,7 +21,8 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api, ApiError, type ImportResult } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
-import { parseCsvObjects } from "@/lib/csv";
+import { downloadCsv, parseCsvObjects } from "@/lib/csv";
+import { buildCompanyCsvTemplate, IMPORTABLE_CSV_HEADERS } from "@/lib/companyCsv";
 import { useSeason } from "@/hooks/useSeason";
 import { cn } from "@/lib/utils";
 
@@ -101,8 +109,8 @@ export function ImportDialog() {
     >
       <DialogTrigger asChild>
         <Button variant="outline">
-          <Upload className="mr-2 h-4 w-4" />
-          Import
+          <FileUp className="mr-2 h-4 w-4" />
+          Import CSV
         </Button>
       </DialogTrigger>
 
@@ -188,14 +196,35 @@ export function ImportDialog() {
             </div>
 
             <div className="rounded-md border border-border bg-muted/30 p-3">
-              <p className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Recognised columns
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <p className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Recognised columns
+                </p>
+                {/* The headers alone do not answer what people actually ask -
+                    what a date should look like, whether roles are comma
+                    separated - so the template carries a filled example row. */}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="-my-1 h-7 text-xs"
+                  onClick={() =>
+                    downloadCsv("placetrack-import-template.csv", buildCompanyCsvTemplate())
+                  }
+                >
+                  <Download className="mr-1.5 h-3.5 w-3.5" />
+                  Download template
+                </Button>
+              </div>
+
+              <p className="mt-1.5 font-mono text-2xs leading-relaxed text-muted-foreground">
+                {IMPORTABLE_CSV_HEADERS.join(", ")}
               </p>
-              <p className="mt-1.5 text-xs text-muted-foreground">
-                Company, Location, CTC, CTC breakdown, CGPA, Roles, Selected, Website, Form,
-                Deadline, PPT, OA, Interview, Bond, Eligibility, Description. Header names are
-                matched loosely, and anything unrecognised is ignored - so an export from this
-                site can be edited and imported straight back.
+
+              <p className="mt-2 text-xs text-muted-foreground">
+                Header names are matched loosely and anything unrecognised is ignored, so an export
+                from this site can be edited and imported straight back. Only{" "}
+                <strong className="font-medium text-foreground">Company</strong> is required.
               </p>
             </div>
           </>
