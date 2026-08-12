@@ -398,9 +398,14 @@ describe.runIf(!process.env.SKIP_API_TESTS)("csv import", () => {
 
     const companies = await api("/companies");
     const matches = (
-      companies.body as unknown as { companies: Array<{ name: string }> }
+      companies.body as unknown as { companies: Array<{ id: string; name: string }> }
     ).companies.filter((company) => company.name === name);
     expect(matches).toHaveLength(1);
+
+    // Cleaned up, or every run leaves another row behind - which makes the
+    // local database grow without bound and any count-based assertion drift.
+    const admin = await login("admin@iiit.ac.in");
+    await api(`/companies/${matches[0].id}`, { method: "DELETE" }, admin.access_token);
   });
 });
 
