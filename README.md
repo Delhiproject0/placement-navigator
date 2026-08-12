@@ -5,6 +5,8 @@ interview experiences and questions students contribute after each drive.
 
 **Live:** https://placements.dileepadari.dev
 
+Built for IIIT Hyderabad students, for internal use.
+
 ## What it does
 
 - **Seasons** - the whole site is an archive as well as a noticeboard. A year
