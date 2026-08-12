@@ -33,6 +33,25 @@ export function SeasonSelect({ className }: { className?: string }) {
     (entry) => entry.company_count > 0 || entry.is_current || entry.slug === season,
   );
 
+  // Before any archive years have been added there is nothing to choose
+  // between, and a menu that opens onto a single item is a small lie about
+  // what it does. The year is still worth showing - it says what you are
+  // looking at - so it becomes a label.
+  if (visible.length < 2) {
+    return (
+      <span
+        className={cn(
+          "inline-flex h-8 items-center gap-1.5 rounded-sm border border-border px-2.5 font-mono text-xs tabular text-muted-foreground",
+          className,
+        )}
+        title="The only placement season on record"
+      >
+        <CalendarRange className="h-3.5 w-3.5" />
+        {season}
+      </span>
+    );
+  }
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>

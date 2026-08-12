@@ -53,9 +53,15 @@ export function CompanyHistory({ companyId }: { companyId: string }) {
         {history.map((entry, index) => {
           const ctc = parseCtcToNumber(entry.offered_ctc);
           // Compared against the next entry, which is the season before it -
-          // the list is already newest-first.
+          // the list is already newest-first. Only when it really is a
+          // different season: a company can run two drives in one year, and
+          // labelling the gap between them as a year-on-year change would be
+          // an invented trend.
           const previous = history[index + 1];
-          const previousCtc = previous ? parseCtcToNumber(previous.offered_ctc) : null;
+          const previousCtc =
+            previous && previous.season?.slug !== entry.season?.slug
+              ? parseCtcToNumber(previous.offered_ctc)
+              : null;
           const delta = ctc !== null && previousCtc !== null ? ctc - previousCtc : null;
           const isViewing = entry.id === companyId;
 

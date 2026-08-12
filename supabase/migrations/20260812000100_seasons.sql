@@ -202,9 +202,18 @@ update public.seasons
 alter table public.companies alter column season_id set not null;
 alter table public.companies alter column org_slug set not null;
 
--- One drive per organisation per season. A second "Acme" in the same year is a
--- duplicate, not a second drive.
-create unique index if not exists idx_companies_season_org
+-- Deliberately NOT unique on (season_id, org_slug).
+--
+-- The tempting constraint is "one drive per organisation per season", and it is
+-- wrong. The live data already contains "Minix Fintech" and "Minix Fintech Pvt.
+-- Ltd" in the same cycle, and a company running two drives in one year - an
+-- intern intake and a full-time one, or two business units hiring separately -
+-- is normal rather than an error. Enforcing uniqueness would have aborted this
+-- migration on real data and would keep rejecting legitimate rows afterwards.
+--
+-- The history panel groups by org_slug and copes with more than one row per
+-- season, so nothing downstream needs the guarantee.
+create index if not exists idx_companies_season_org
   on public.companies (season_id, org_slug);
 
 create index if not exists idx_companies_season on public.companies (season_id);
