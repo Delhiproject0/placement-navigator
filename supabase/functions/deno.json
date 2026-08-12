@@ -1,0 +1,4 @@
+{
+  "//": "Deno walks up from the entry file looking for a config, and without this it finds the frontend's package.json and switches to manual node_modules resolution. It then fails on supabase-js's transitive npm dependencies, which are not installed there and never should be - the edge runtime has no node_modules at all. 'none' tells Deno to ignore node_modules and resolve npm specifiers from its own cache, which is what actually happens at runtime.",
+  "nodeModulesDir": "none"
+}

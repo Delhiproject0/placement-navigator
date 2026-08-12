@@ -48,6 +48,9 @@ jobs:
         with:
           deno-version: v2.x
 
-      # Without a deno.json declaring "nodeModulesDir": "none", Deno walks up
-      # and tries to resolve the frontend's node_modules.
-      - run: deno check supabase/functions/placements/index.ts
+      # --config is not optional. Deno looks for its config relative to the
+      # working directory, so a deno.json further down the tree is never found
+      # from the repo root; without it Deno falls back to the frontend's
+      # package.json, switches to manual node_modules resolution, and dies on
+      # supabase-js's transitive npm dependencies.
+      - run: deno check --config supabase/functions/deno.json supabase/functions/placements/index.ts
