@@ -94,7 +94,7 @@ access goes through the API, authenticated with a token this project issued.
 
 | Variable | Where it comes from | Needed for |
 |---|---|---|
-| `SUPABASE_ACCESS_TOKEN` | supabase.com/dashboard/account/tokens | `link`, `db push`, `functions deploy`, `secrets set`, `gen types` |
+| `SUPABASE_ACCESS_TOKEN` | supabase.com/dashboard/account/tokens | `link`, `db push`, `functions deploy`, `secrets set` |
 | `SUPABASE_DB_PASSWORD` | Project Settings → Database | `db push`, direct `psql` |
 | `SUPABASE_SERVICE_ROLE_KEY` | Project Settings → API → service_role | Admin user deletion, test teardown |
 
@@ -306,8 +306,8 @@ at which a wrong count announces itself.
 
 ```sh
 npm run db:push
-npm run gen:types      # always, immediately after
-git add src/integrations/supabase/types.ts && git commit
+# No generated types to refresh - update src/types/database.ts and
+# src/lib/api.ts by hand if the change adds or renames a column.
 ```
 
 Before any migration that is not purely additive, take a backup:

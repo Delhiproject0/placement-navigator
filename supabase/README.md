@@ -12,7 +12,6 @@ functions/    edge functions
 npx supabase migration new short_description
 # edit the generated file
 npm run db:push
-npm run gen:types
 ```
 
 The filename prefix must be a full 14-digit timestamp

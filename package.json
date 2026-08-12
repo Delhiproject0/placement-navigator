@@ -15,7 +15,6 @@
     "db:link": "supabase link --project-ref $VITE_SUPABASE_PROJECT_ID",
     "db:push": "supabase db push",
     "db:reset": "supabase db reset",
-    "gen:types": "supabase gen types typescript --linked > src/integrations/supabase/types.ts",
     "fn:deploy": "supabase functions deploy placements"
   },
   "dependencies": {

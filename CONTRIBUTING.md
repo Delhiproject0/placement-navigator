@@ -15,7 +15,7 @@ npm run lint && npm run typecheck && npm test -- --run && npm run build
 - **Commit messages** are a single line, imperative: `fix: guard company fetch
   against a missing id`.
 - **Types come from the database.** Never hand-edit
-  `src/integrations/supabase/types.ts` - run `npm run gen:types` after any
+  `src/types/database.ts` and `src/lib/api.ts` by hand after any
   migration and commit the result. If you find yourself writing `as any` around a
   Supabase call, the generated types are stale; regenerate them instead.
 - **Data fetching goes through TanStack Query hooks** in `src/hooks/queries/`.

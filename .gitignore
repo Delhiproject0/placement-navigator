@@ -39,3 +39,8 @@ playwright-report
 test-results
 # Local edge function secrets
 supabase/functions/.env
+
+# Database dumps. These contain real student emails, bcrypt password hashes and
+# session tokens - they are operational artefacts, not source, and must never
+# reach a remote. Keep them locally or in a private store.
+supabase/backups/*.sql

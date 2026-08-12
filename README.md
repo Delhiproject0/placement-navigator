@@ -72,21 +72,23 @@ each one comes from.
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm test` | Unit and component tests |
 | `npm run db:push` | Apply migrations to the linked project |
-| `npm run gen:types` | Regenerate `src/integrations/supabase/types.ts` from the live schema |
 | `npm run fn:deploy` | Deploy the `placements` edge function |
 
 ## Database
 
 Migrations live in `supabase/migrations/` and are applied in filename order.
-`supabase/backups/` holds data exports taken before schema changes.
+`supabase/backups/` holds dumps taken before schema changes. It is gitignored:
+those files contain real emails and password hashes.
 
 ```sh
 npm run db:push      # apply to the linked project
-npm run gen:types    # then always regenerate types
 ```
 
-Never hand-edit `src/integrations/supabase/types.ts` - regenerate it. See
-[supabase/README.md](./supabase/README.md) for how to add a migration safely.
+There are no generated database types. The browser never talks to PostgREST -
+every request goes through the `placements` edge function - so the types that
+matter are the hand-written API shapes in `src/types/database.ts` and
+`src/lib/api.ts`. Change a column and you change those by hand, deliberately.
+See [supabase/README.md](./supabase/README.md) for how to add a migration safely.
 
 ## Contributing
 

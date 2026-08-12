@@ -131,13 +131,17 @@ begin
 
   -- Mirror the old handle_new_user() trigger: every account gets a profile
   -- and the default viewer role, so the rest of the app can assume they exist.
+  -- NOT EXISTS rather than ON CONFLICT, for the same reason as the backfill
+  -- below: a conflict target that no unique constraint matches raises, and
+  -- this runs on every signup, so it would fail at runtime rather than at
+  -- migration time.
   insert into public.profiles (user_id, email, full_name)
-  values (_user.id, _user.email::text, _user.full_name)
-  on conflict (user_id) do nothing;
+  select _user.id, _user.email::text, _user.full_name
+  where not exists (select 1 from public.profiles p where p.user_id = _user.id);
 
   insert into public.user_roles (user_id, role)
-  values (_user.id, 'viewer')
-  on conflict (user_id) do nothing;
+  select _user.id, 'viewer'
+  where not exists (select 1 from public.user_roles r where r.user_id = _user.id);
 
   return _user;
 end;
@@ -359,15 +363,21 @@ begin
     on conflict (id) do nothing;
 
     -- Backfill the rows the old signup trigger should have created.
+    --
+    -- NOT EXISTS rather than ON CONFLICT: a conflict target names specific
+    -- columns and fails outright if no unique constraint matches them, which
+    -- couples this backfill to the exact constraint shape of a table it does
+    -- not own. The live user_roles was unique on (user_id, role) rather than
+    -- (user_id), and this statement is what discovered that.
     insert into public.profiles (user_id, email, full_name)
     select a.id, a.email::text, a.full_name
     from public.app_users a
-    on conflict (user_id) do nothing;
+    where not exists (select 1 from public.profiles p where p.user_id = a.id);
 
     insert into public.user_roles (user_id, role)
     select a.id, 'viewer'
     from public.app_users a
-    on conflict (user_id) do nothing;
+    where not exists (select 1 from public.user_roles r where r.user_id = a.id);
 
     raise notice 'Migrated % account(s) from auth.users',
       (select count(*) from public.app_users);
