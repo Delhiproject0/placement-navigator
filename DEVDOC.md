@@ -102,7 +102,7 @@ access goes through the API, authenticated with a token this project issued.
 
 | Variable | Value |
 |---|---|
-| `SELFHOST_JWT_SECRET` | `JWT_SECRET` from `~/supabase-prod/docker/.env` on the storage box |
+| `SELFHOST_JWT_SECRET` | `JWT_SECRET` from `~/supabase-prod/docker/.env` on the storage box. 64 characters; the same value the portfolio project calls `ADMIN_JWT_SECRET`. A wrong one fails silently until an upload: the box answers `401 Unauthorized: Invalid signature` and the API turns that into a 502. Check it without printing it: `printf %s "$SELFHOST_JWT_SECRET" \| sha256sum` should match the box's. |
 | `ORACLE_UPLOAD_BASE_URL` | `https://supabase.dileepadari.dev` |
 | `ORACLE_UPLOAD_PATH` | `/functions/v1/upload` |
 | `ORACLE_PUBLIC_BASE_URL` | `https://mystorage.dileepadari.dev` |
