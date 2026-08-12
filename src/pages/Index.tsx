@@ -7,6 +7,7 @@ import { PhaseChip } from "@/components/companies/PhaseChip";
 import { DeadlinePill } from "@/components/companies/DeadlinePill";
 import { CompanyLogo } from "@/components/companies/CompanyLogo";
 import { DeadlineTicker } from "@/components/DeadlineTicker";
+import { ArchiveHint, ArchiveHintLine } from "@/components/ArchiveHint";
 import { EmptyState } from "@/components/EmptyState";
 import { Shimmer } from "@/components/skeletons/CompanyTableSkeleton";
 import { Button } from "@/components/ui/button";
@@ -143,6 +144,13 @@ const Index = () => {
                 </Link>
               </Button>
             </div>
+
+            {/* Only shows when this season is genuinely empty, which is every
+                August until the first drive is announced. The hero otherwise
+                reads "0 companies tracked" with nothing to click. */}
+            {!loading && companies.length === 0 && (
+              <ArchiveHintLine className="mt-6 max-w-lg text-sm text-muted-foreground" />
+            )}
           </div>
 
           {/* Stat rail: a hairline-separated column, not four bordered boxes. */}
@@ -252,7 +260,12 @@ function CompanyList({
           ))}
         </div>
       ) : companies.length === 0 ? (
-        <EmptyState variant="companies" title={emptyTitle} description={emptyDescription} />
+        <EmptyState
+          variant="companies"
+          title={emptyTitle}
+          description={emptyDescription}
+          action={<ArchiveHint />}
+        />
       ) : (
         <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card shadow-xs">
           {companies.map((company) => (

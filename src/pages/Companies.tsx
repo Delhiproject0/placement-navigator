@@ -9,6 +9,7 @@ import { CompanyTable, type SortKey, type SortState } from "@/components/compani
 import { CompanyForm } from "@/components/companies/CompanyForm";
 import { ImportDialog } from "@/components/companies/ImportDialog";
 import { EmptyState } from "@/components/EmptyState";
+import { ArchiveHint } from "@/components/ArchiveHint";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -232,6 +233,7 @@ const Companies = () => {
                 variant="companies"
                 title="No companies yet"
                 description="Once a drive is scheduled it will show up here."
+                action={<ArchiveHint />}
               />
             )
           }

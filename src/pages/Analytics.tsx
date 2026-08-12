@@ -18,6 +18,7 @@ import { Layout } from "@/components/layout/Layout";
 import { Seo } from "@/components/Seo";
 import { ChartCard, ChartTooltip } from "@/components/charts/ChartCard";
 import { EmptyState } from "@/components/EmptyState";
+import { ArchiveHint } from "@/components/ArchiveHint";
 import { Shimmer } from "@/components/skeletons/CompanyTableSkeleton";
 import { Card, CardContent } from "@/components/ui/card";
 import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
@@ -92,6 +93,7 @@ const Analytics = () => {
             variant="companies"
             title="Nothing to chart yet"
             description="Once companies are added, this page summarises the season."
+            action={<ArchiveHint />}
           />
         </div>
       </Layout>

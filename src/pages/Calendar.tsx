@@ -4,6 +4,7 @@ import { CalendarDays, ChevronLeft, ChevronRight, Download } from "lucide-react"
 import { Layout } from "@/components/layout/Layout";
 import { Seo } from "@/components/Seo";
 import { EmptyState } from "@/components/EmptyState";
+import { ArchiveHint } from "@/components/ArchiveHint";
 import { Shimmer } from "@/components/skeletons/CompanyTableSkeleton";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -164,9 +165,12 @@ const CalendarPage = () => {
             title="Nothing scheduled yet"
             description="Once companies have dates against them, they appear here."
             action={
-              <Button asChild>
-                <Link to="/companies">Browse companies</Link>
-              </Button>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <Button asChild>
+                  <Link to="/companies">Browse companies</Link>
+                </Button>
+                <ArchiveHint />
+              </div>
             }
           />
         ) : (
