@@ -44,3 +44,8 @@ supabase/functions/.env
 # session tokens - they are operational artefacts, not source, and must never
 # reach a remote. Keep them locally or in a private store.
 supabase/backups/*.sql
+
+# The repo root is a Vite/Node project, not a Deno one. Running `deno` from
+# here (or installing it) drops a lockfile that has nothing to do with the
+# edge functions, whose own lock lives in supabase/functions/.
+/deno.lock
