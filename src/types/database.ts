@@ -31,6 +31,12 @@ export interface Company {
   created_at: string;
   updated_at: string;
   external_form?: string | null;
+  /** Which placement season this drive belongs to. */
+  season_id?: string;
+  /** Normalised name, used to follow one organisation across seasons. */
+  org_slug?: string;
+  /** Joined for display; absent on rows that did not request it. */
+  season?: { slug: string; label: string } | null;
 }
 
 export interface InterviewExperience {

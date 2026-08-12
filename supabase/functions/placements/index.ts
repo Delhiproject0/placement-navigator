@@ -29,6 +29,7 @@ import * as calendar from "./routes/calendar.ts";
 import { importCompanies } from "./routes/importer.ts";
 import * as surface from "./routes/adminSurface.ts";
 import * as discussion from "./routes/discussion.ts";
+import * as seasons from "./routes/seasons.ts";
 
 /** Strips the function mount prefix, leaving a leading-slash path. */
 function routePath(pathname: string): string {
@@ -73,6 +74,10 @@ Deno.serve(async (req) => {
       return await contributions.listForCompany("interview_questions", segments[1]);
     }
     if (method === "GET" && path === "/announcements") return await surface.listLiveAnnouncements();
+    if (method === "GET" && path === "/seasons") return await seasons.listSeasons();
+    if (method === "GET" && segments[0] === "companies" && segments[2] === "history") {
+      return await seasons.companyHistory(segments[1]);
+    }
     if (method === "GET" && path === "/tags") return await discussion.listTags();
     if (method === "GET" && segments[0] === "companies" && segments[2] === "tags") {
       return await discussion.getCompanyTags(segments[1]);
@@ -175,7 +180,7 @@ Deno.serve(async (req) => {
     if (method === "POST" && path === "/companies") {
       const denied = requireEditor(caller);
       if (denied) return denied;
-      return await companies.createCompany(req, caller!);
+      return await companies.createCompany(req, caller!, await seasons.resolveSeasonId(url));
     }
     if (segments[0] === "companies" && segments.length === 2) {
       if (method === "PATCH") {
@@ -240,7 +245,7 @@ Deno.serve(async (req) => {
     if (method === "POST" && path === "/import/companies") {
       const denied = requireEditor(caller);
       if (denied) return denied;
-      return await importCompanies(req, caller!);
+      return await importCompanies(req, caller!, await seasons.resolveSeasonId(url));
     }
 
     // --------------------------------------------------------------- admin
@@ -249,10 +254,20 @@ Deno.serve(async (req) => {
       if (denied) return denied;
 
       if (method === "GET" && path === "/admin/users") return await admin.listUsers(url);
-      if (method === "GET" && path === "/admin/stats") return await admin.stats();
+      if (method === "GET" && path === "/admin/stats") {
+        return await admin.stats(await seasons.resolveSeasonId(url));
+      }
       if (method === "GET" && path === "/admin/audit") return await surface.listAuditLog(url);
       if (method === "GET" && path === "/admin/contributions") {
         return await surface.listAllContributions(url);
+      }
+
+      if (path === "/admin/seasons") {
+        if (method === "POST") return await seasons.createSeason(req, caller!);
+        if (method === "PATCH") return await seasons.setCurrentSeason(req, caller!);
+      }
+      if (method === "DELETE" && segments[1] === "seasons" && segments[2]) {
+        return await seasons.deleteSeason(segments[2], caller!);
       }
 
       if (path === "/admin/settings") {

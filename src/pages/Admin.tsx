@@ -13,6 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ModerationPanel } from "@/components/admin/ModerationPanel";
+import { SeasonsPanel } from "@/components/admin/SeasonsPanel";
 import { SettingsPanel } from "@/components/admin/SettingsPanel";
 import { AuditPanel } from "@/components/admin/AuditPanel";
 import {
@@ -27,6 +28,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useAuth } from "@/hooks/useAuth";
+import { useSeason } from "@/hooks/useSeason";
 import {
   useAdminStats,
   useAdminUsers,
@@ -41,6 +43,7 @@ const ROLES: Array<AdminUser["role"]> = ["viewer", "editor", "admin"];
 
 const Admin = () => {
   const { user, isAdmin, loading } = useAuth();
+  const { season } = useSeason();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
 
@@ -97,7 +100,18 @@ const Admin = () => {
 
         <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard icon={Users} label="Accounts" value={statsQuery.data?.users} />
-          <StatCard icon={Building2} label="Companies" value={statsQuery.data?.companies} />
+          <StatCard
+            icon={Building2}
+            label="Companies"
+            value={statsQuery.data?.companies}
+            // The headline is every season - the archive is the bigger number
+            // and the one worth seeing here - with the selected year underneath.
+            hint={
+              statsQuery.data?.season_companies != null && season
+                ? `${statsQuery.data.season_companies} in ${season}, across ${statsQuery.data.seasons} seasons`
+                : undefined
+            }
+          />
           <StatCard icon={FileText} label="Experiences" value={statsQuery.data?.experiences} />
           <StatCard icon={MessageSquareText} label="Questions" value={statsQuery.data?.questions} />
         </div>
@@ -105,6 +119,7 @@ const Admin = () => {
         <Tabs defaultValue="users">
           <TabsList>
             <TabsTrigger value="users">Users</TabsTrigger>
+            <TabsTrigger value="seasons">Seasons</TabsTrigger>
             <TabsTrigger value="moderation">Moderation</TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
             <TabsTrigger value="audit">Audit</TabsTrigger>
@@ -286,6 +301,10 @@ const Admin = () => {
         </Card>
           </TabsContent>
 
+          <TabsContent value="seasons" className="mt-5">
+            <SeasonsPanel />
+          </TabsContent>
+
           <TabsContent value="moderation" className="mt-5">
             <ModerationPanel />
           </TabsContent>
@@ -307,10 +326,12 @@ function StatCard({
   icon: Icon,
   label,
   value,
+  hint,
 }: {
   icon: typeof Shield;
   label: string;
   value: number | undefined;
+  hint?: string;
 }) {
   return (
     <Card>
@@ -325,6 +346,7 @@ function StatCard({
           ) : (
             <p className="font-display text-2xl font-semibold tabular">{value}</p>
           )}
+          {hint && <p className="text-2xs text-muted-foreground">{hint}</p>}
         </div>
       </CardContent>
     </Card>

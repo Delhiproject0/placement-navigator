@@ -2,6 +2,7 @@
 
 import { db, dbAs, type Caller } from "../context.ts";
 import { fail, json, readJson, str } from "../http.ts";
+import { resolveSeasonId, wantsAllSeasons } from "./seasons.ts";
 
 /**
  * Columns a client is allowed to write. An allowlist rather than passing the
@@ -28,6 +29,7 @@ const WRITABLE = [
   "bond_details",
   "job_location",
   "eligibility_criteria",
+  "season_id",
 ] as const;
 
 const STATUSES = new Set(["upcoming", "ongoing", "completed", "cancelled"]);
@@ -124,8 +126,20 @@ export function pickWritable(body: Record<string, unknown>): ValidationResult {
 export async function listCompanies(url: URL): Promise<Response> {
   const search = str(url.searchParams.get("q"));
   const limit = Math.min(Number(url.searchParams.get("limit")) || 500, 500);
+  const allSeasons = wantsAllSeasons(url);
+  const seasonId = await resolveSeasonId(url);
 
-  let query = db.from("companies").select("*").order("created_at", { ascending: false }).limit(limit);
+  // An unknown season slug is not the current season - returning today's data
+  // under a 2019 URL would misrepresent it as that year's.
+  if (!allSeasons && !seasonId) return json({ companies: [], season: null });
+
+  let query = db
+    .from("companies")
+    .select("*, seasons(slug, label)")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (!allSeasons && seasonId) query = query.eq("season_id", seasonId);
 
   if (search) {
     // Escape the wildcards so a literal % in a search term does not turn into
@@ -136,23 +150,49 @@ export async function listCompanies(url: URL): Promise<Response> {
 
   const { data, error } = await query;
   if (error) return fail(500, "QUERY_FAILED", "Could not load companies");
-  return json({ companies: data ?? [] });
+
+  return json({
+    companies: (data ?? []).map(flattenSeason),
+    season: seasonId ?? null,
+  });
+}
+
+/** PostgREST nests the joined season; the client wants it flat. */
+export function flattenSeason<T extends { seasons?: unknown }>(row: T) {
+  const season = Array.isArray(row.seasons) ? row.seasons[0] : row.seasons;
+  return { ...row, season: season ?? null, seasons: undefined };
 }
 
 export async function getCompany(id: string): Promise<Response> {
-  const { data, error } = await db.from("companies").select("*").eq("id", id).maybeSingle();
+  const { data, error } = await db
+    .from("companies")
+    .select("*, seasons(slug, label)")
+    .eq("id", id)
+    .maybeSingle();
   if (error) return fail(500, "QUERY_FAILED", "Could not load the company");
   if (!data) return fail(404, "NOT_FOUND", "That company does not exist");
-  return json({ company: data });
+  return json({ company: flattenSeason(data) });
 }
 
-export async function createCompany(req: Request, caller: Caller): Promise<Response> {
+export async function createCompany(
+  req: Request,
+  caller: Caller,
+  seasonId: string | undefined,
+): Promise<Response> {
   const body = await readJson<Record<string, unknown>>(req);
   if (!body) return fail(400, "INVALID_BODY", "Expected a JSON body");
 
   const { values, errors } = pickWritable(body);
   if (!values.name) errors.name ??= "A company name is required";
   if (Object.keys(errors).length) return fail(422, "VALIDATION_FAILED", "Check the form", errors);
+
+  // The season being viewed, not the season the dates fall in. A database
+  // trigger would otherwise infer it from the deadline, which quietly files a
+  // correction to a 2023 record under this year.
+  if (!values.season_id) {
+    if (!seasonId) return fail(400, "NO_SEASON", "That season does not exist");
+    values.season_id = seasonId;
+  }
 
   const { data, error } = await dbAs(caller).from("companies").insert(values).select().single();
   if (error) return fail(500, "INSERT_FAILED", "Could not create the company");

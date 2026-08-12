@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useCompanies } from "@/hooks/queries";
+import { useSeason } from "@/hooks/useSeason";
 import { Layout } from "@/components/layout/Layout";
 import { Seo } from "@/components/Seo";
 import { CompanyTable, type SortKey, type SortState } from "@/components/companies/CompanyTable";
@@ -20,6 +21,7 @@ import { formatInISTHuman } from "@/lib/utils";
 
 const Companies = () => {
   const { canEdit } = useAuth();
+  const { season } = useSeason();
   const { data, isPending: loading } = useCompanies();
   const companies = useMemo(() => data ?? [], [data]);
   const [dialogOpen, setDialogOpen] = useState(() => new URLSearchParams(window.location.search).has("new"));
@@ -132,7 +134,10 @@ const Companies = () => {
       { header: "Eligibility", value: (c) => c.eligibility_criteria },
       { header: "Description", value: (c) => c.description },
     ]);
-    downloadCsv(`placetrack-companies-${new Date().toISOString().slice(0, 10)}.csv`, csv);
+    // The season is in the filename because the rows carry no year of their
+    // own: three exports taken a minute apart are otherwise indistinguishable,
+    // and re-importing the wrong one is the mistake this prevents.
+    downloadCsv(`placetrack-${season ?? "companies"}-${new Date().toISOString().slice(0, 10)}.csv`, csv);
   };
 
   return (

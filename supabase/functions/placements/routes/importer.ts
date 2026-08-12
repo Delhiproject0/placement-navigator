@@ -65,11 +65,21 @@ export interface ImportIssue {
   message: string;
 }
 
-export async function importCompanies(req: Request, caller: Caller): Promise<Response> {
+export async function importCompanies(
+  req: Request,
+  caller: Caller,
+  seasonId: string | undefined,
+): Promise<Response> {
   const body = await readJson<{ rows?: Record<string, string>[]; dry_run?: boolean }>(req);
   const rows = body?.rows;
   const dryRun = body?.dry_run !== false;
 
+  // Every company belongs to exactly one season, so an import with no target
+  // has nowhere to go. Refusing beats guessing: a sheet of last year's drives
+  // landing in this year's list is tedious to unpick.
+  if (!seasonId) {
+    return fail(400, "NO_SEASON", "Pick the season this sheet belongs to before importing");
+  }
   if (!Array.isArray(rows)) return fail(400, "INVALID_BODY", "Expected a list of rows");
   if (rows.length === 0) return fail(400, "EMPTY_IMPORT", "The file has no rows");
   // A cap, so one paste cannot lock the function up for minutes.
@@ -105,13 +115,19 @@ export async function importCompanies(req: Request, caller: Caller): Promise<Res
     prepared.push({ row: rowNumber, values });
   });
 
-  // Name is the natural key: a re-import of a corrected sheet should update
-  // rather than create a second Wavelength Systems.
+  // Name *within the target season* is the natural key: a re-import of a
+  // corrected sheet should update rather than create a second Wavelength
+  // Systems, but the Wavelength Systems of two years ago is a different row
+  // and must not be touched.
   const names = prepared.map((entry) => entry.values.name as string);
   const existing = new Map<string, string>();
 
   if (names.length) {
-    const { data } = await db.from("companies").select("id, name").in("name", names);
+    const { data } = await db
+      .from("companies")
+      .select("id, name")
+      .eq("season_id", seasonId)
+      .in("name", names);
     for (const company of data ?? []) existing.set(company.name.toLowerCase(), company.id);
   }
 
@@ -136,7 +152,7 @@ export async function importCompanies(req: Request, caller: Caller): Promise<Res
   if (toCreate.length) {
     const { data, error } = await dbAs(caller)
       .from("companies")
-      .insert(toCreate.map((entry) => entry.values))
+      .insert(toCreate.map((entry) => ({ ...entry.values, season_id: seasonId })))
       .select("id");
     if (error) {
       failures.push({ row: 0, message: `Could not create rows: ${error.message}` });

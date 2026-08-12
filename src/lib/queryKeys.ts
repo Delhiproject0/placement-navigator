@@ -6,9 +6,14 @@
  * that nobody notices until a user reports it.
  */
 export const qk = {
+  seasons: ["seasons"] as const,
   companies: {
     all: ["companies"] as const,
-    list: (search?: string) => ["companies", "list", search ?? ""] as const,
+    // The season is part of the key, or switching year would show the previous
+    // year's cached rows until a refetch landed.
+    list: (search?: string, season?: string | null) =>
+      ["companies", "list", season ?? "current", search ?? ""] as const,
+    history: (id: string) => ["companies", "history", id] as const,
     detail: (id: string) => ["companies", "detail", id] as const,
     deletionImpact: (id: string) => ["companies", "deletion-impact", id] as const,
   },
@@ -34,6 +39,6 @@ export const qk = {
   },
   admin: {
     users: (search: string, page: number) => ["admin", "users", search, page] as const,
-    stats: ["admin", "stats"] as const,
+    stats: (season?: string | null) => ["admin", "stats", season ?? "current"] as const,
   },
 } as const;

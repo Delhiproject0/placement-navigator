@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { CalendarDays, ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
@@ -8,6 +8,7 @@ import { Shimmer } from "@/components/skeletons/CompanyTableSkeleton";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useCompanies } from "@/hooks/queries";
+import { useSeason } from "@/hooks/useSeason";
 import { buildIcs, companyEvents, downloadIcs, type CalendarEvent } from "@/lib/ics";
 import { formatInISTHuman } from "@/lib/utils";
 import { cn } from "@/lib/utils";
@@ -37,12 +38,36 @@ const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 const CalendarPage = () => {
   const { data: companies = [], isPending } = useCompanies();
+  const { season, isArchive } = useSeason();
   const [cursor, setCursor] = useState(() => {
     const { year, month } = istParts(new Date());
     return { year, month };
   });
 
   const events = useMemo(() => companyEvents(companies), [companies]);
+
+  /**
+   * On an archive year, open on the first month that actually has something in
+   * it. Today's month is two years past the end of the 2023 season, so the
+   * default view is an empty grid and the archive looks broken until you work
+   * out you have to page backwards eleven times.
+   */
+  const landedOn = useRef<string | null>(null);
+  useEffect(() => {
+    if (!season || events.length === 0) return;
+    if (landedOn.current === season) return;
+    landedOn.current = season;
+
+    if (!isArchive) {
+      const { year, month } = istParts(new Date());
+      setCursor({ year, month });
+      return;
+    }
+
+    const earliest = events.reduce((min, event) => (event.start < min ? event.start : min), events[0].start);
+    const { year, month } = istParts(earliest);
+    setCursor({ year, month });
+  }, [season, isArchive, events]);
 
   const byDay = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
@@ -91,9 +116,14 @@ const CalendarPage = () => {
     });
   };
 
+  // On the live season this is what is coming; on an archive year nothing is
+  // ahead by definition, so the same panel shows how that season began.
   const upcoming = useMemo(
-    () => events.filter((event) => event.start.getTime() >= Date.now()).slice(0, 8),
-    [events],
+    () =>
+      isArchive
+        ? [...events].sort((a, b) => a.start.getTime() - b.start.getTime()).slice(0, 8)
+        : events.filter((event) => event.start.getTime() >= Date.now()).slice(0, 8),
+    [events, isArchive],
   );
 
   return (
@@ -114,7 +144,12 @@ const CalendarPage = () => {
           <Button
             variant="outline"
             disabled={events.length === 0}
-            onClick={() => downloadIcs("placetrack.ics", buildIcs(events, "PlaceTrack - IIITH"))}
+            onClick={() =>
+              downloadIcs(
+                `placetrack-${season ?? "calendar"}.ics`,
+                buildIcs(events, `PlaceTrack - IIITH ${season ?? ""}`.trim()),
+              )
+            }
           >
             <Download className="mr-2 h-4 w-4" />
             Download .ics
@@ -143,15 +178,25 @@ const CalendarPage = () => {
                   <Button variant="ghost" size="icon" onClick={() => step(-1)} aria-label="Previous month">
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
+                  {/* "Today" is not a place worth going in an archive year -
+                      it is months past the end of that season. */}
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => {
+                      if (isArchive && events.length) {
+                        const earliest = events.reduce(
+                          (min, event) => (event.start < min ? event.start : min),
+                          events[0].start,
+                        );
+                        setCursor(istParts(earliest));
+                        return;
+                      }
                       const { year, month } = istParts(new Date());
                       setCursor({ year, month });
                     }}
                   >
-                    Today
+                    {isArchive ? "Season start" : "Today"}
                   </Button>
                   <Button variant="ghost" size="icon" onClick={() => step(1)} aria-label="Next month">
                     <ChevronRight className="h-4 w-4" />
@@ -224,7 +269,9 @@ const CalendarPage = () => {
             <div className="space-y-5">
               <Card>
                 <CardContent className="pt-5">
-                  <h2 className="mb-3 font-display text-base font-semibold">Next up</h2>
+                  <h2 className="mb-3 font-display text-base font-semibold">
+                    {isArchive ? `How ${season} started` : "Next up"}
+                  </h2>
                   {upcoming.length === 0 ? (
                     <p className="text-sm text-muted-foreground">Nothing ahead on the calendar.</p>
                   ) : (
@@ -254,12 +301,16 @@ const CalendarPage = () => {
                     Subscribe
                   </h2>
                   <p className="text-xs text-muted-foreground">
-                    Downloading the .ics imports a snapshot. A subscription that keeps updating
-                    needs a personal feed URL - see your{" "}
+                    Downloading the .ics imports a snapshot of {season}. A subscription that keeps
+                    updating needs a personal feed URL - see your{" "}
                     <Link to="/me" className="text-primary underline-offset-4 hover:underline">
                       profile
                     </Link>
                     .
+                    {/* The feed deliberately follows the live season rather
+                        than whatever is selected, so nobody has to resubscribe
+                        each August - worth saying while looking at an old one. */}
+                    {isArchive && " A subscription always tracks the live season, not this one."}
                   </p>
                 </CardContent>
               </Card>

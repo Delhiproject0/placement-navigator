@@ -295,6 +295,41 @@ export interface ImportResult {
   failures?: ImportIssue[];
 }
 
+export interface AdminStats {
+  companies: number;
+  experiences: number;
+  questions: number;
+  users: number;
+  seasons: number;
+  /** Companies in the season being viewed. Null when no season resolved. */
+  season_companies: number | null;
+}
+
+export interface Season {
+  id: string;
+  slug: string;
+  label: string;
+  starts_on: string;
+  ends_on: string;
+  is_current: boolean;
+  company_count: number;
+}
+
+export interface CompanyHistoryEntry {
+  id: string;
+  name: string;
+  offered_ctc: string | null;
+  cgpa_cutoff: number | null;
+  people_selected: number | null;
+  roles: string[] | null;
+  job_location: string | null;
+  status: string | null;
+  registration_deadline: string | null;
+  oa_datetime: string | null;
+  interview_datetime: string | null;
+  season: { slug: string; label: string } | null;
+}
+
 export type CommentableType = "experience" | "question";
 export type VotableType = "experience" | "question" | "comment";
 
@@ -401,20 +436,50 @@ export const api = {
       }),
   },
 
+  seasons: {
+    list: () => request<{ seasons: Season[] }>("/seasons", { auth: false }).then((r) => r.seasons),
+    create: (input: { slug: string; label?: string; make_current?: boolean }) =>
+      request<{ season: Season }>("/admin/seasons", { method: "POST", body: input }),
+    setCurrent: (slug: string) =>
+      request<{ success: boolean }>("/admin/seasons", { method: "PATCH", body: { slug } }),
+    remove: (slug: string) =>
+      request<{ success: boolean }>(`/admin/seasons/${slug}`, { method: "DELETE" }),
+  },
+
   companies: {
-    list: (query?: string) =>
-      request<{ companies: Company[] }>(
-        `/companies${query ? `?q=${encodeURIComponent(query)}` : ""}`,
-        { auth: false },
-      ).then((response) => response.companies),
+    /**
+     * `season` is a slug, or "all". Omitting it gives the current season -
+     * the same default the API applies, kept explicit here so a caller that
+     * forgets is still scoped rather than accidentally global.
+     */
+    list: (query?: string, season?: string | null) => {
+      const params = new URLSearchParams();
+      if (query) params.set("q", query);
+      if (season) params.set("season", season);
+      const suffix = params.toString();
+      return request<{ companies: Company[] }>(`/companies${suffix ? `?${suffix}` : ""}`, {
+        auth: false,
+      }).then((response) => response.companies);
+    },
+
+    history: (id: string) =>
+      request<{ org_slug: string; history: CompanyHistoryEntry[] }>(`/companies/${id}/history`, {
+        auth: false,
+      }),
 
     get: (id: string) =>
       request<{ company: Company }>(`/companies/${id}`, { auth: false }).then((r) => r.company),
 
-    create: (input: Partial<Company>) =>
-      request<{ company: Company }>("/companies", { method: "POST", body: input }).then(
-        (r) => r.company,
-      ),
+    /**
+     * `season` decides which year the new drive belongs to. It is the season
+     * being viewed, not one inferred from the dates - someone filling in a
+     * gap in the 2023 archive is not adding to this year.
+     */
+    create: (input: Partial<Company>, season?: string | null) =>
+      request<{ company: Company }>(
+        `/companies${season ? `?season=${encodeURIComponent(season)}` : ""}`,
+        { method: "POST", body: input },
+      ).then((r) => r.company),
 
     update: (id: string, input: Partial<Company>) =>
       request<{ company: Company }>(`/companies/${id}`, { method: "PATCH", body: input }).then(
@@ -609,9 +674,15 @@ export const api = {
   },
 
   companiesImport: {
-    /** Dry run by default - the UI shows the summary and the user confirms. */
-    run: (rows: Record<string, string>[], dryRun = true) =>
-      request<ImportResult>("/import/companies", {
+    /**
+     * Dry run by default - the UI shows the summary and the user confirms.
+     *
+     * `season` is required rather than defaulted: rows land in exactly one
+     * season and the wrong one is tedious to unpick, so the caller has to have
+     * said which.
+     */
+    run: (rows: Record<string, string>[], season: string, dryRun = true) =>
+      request<ImportResult>(`/import/companies?season=${encodeURIComponent(season)}`, {
         method: "POST",
         body: { rows, dry_run: dryRun },
       }),
@@ -628,10 +699,8 @@ export const api = {
       );
     },
 
-    stats: () =>
-      request<{ companies: number; experiences: number; questions: number; users: number }>(
-        "/admin/stats",
-      ),
+    stats: (season?: string | null) =>
+      request<AdminStats>(`/admin/stats${season ? `?season=${encodeURIComponent(season)}` : ""}`),
 
     setRole: (userId: string, role: AdminUser["role"]) =>
       request<{ success: boolean }>(`/admin/users/${userId}/role`, {

@@ -15,6 +15,7 @@ import {
 import { toast } from "sonner";
 import { api, ApiError, type AdminUser, type ApplicationStage } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
+import { useSeason } from "@/hooks/useSeason";
 import type { Company, InterviewExperience, InterviewQuestion } from "@/types/database";
 
 /**
@@ -40,11 +41,42 @@ function mutationDefaults<TData, TVariables>(
 
 // --- companies -------------------------------------------------------------
 
+/**
+ * Companies for the selected season.
+ *
+ * Waits for the season to resolve rather than firing an unscoped request -
+ * otherwise the first paint after a reload shows the current season for a
+ * moment even when the URL asked for an older one.
+ */
 export function useCompanies(search?: string, enabled = true) {
+  const { season, loading } = useSeason();
   return useQuery({
-    queryKey: qk.companies.list(search),
-    queryFn: () => api.companies.list(search),
-    enabled,
+    queryKey: qk.companies.list(search, season),
+    queryFn: () => api.companies.list(search, season),
+    enabled: enabled && !loading && season !== null,
+  });
+}
+
+/**
+ * Companies for a named season, ignoring the selector.
+ *
+ * Only for side-by-side comparison - analytics reads the season before the one
+ * being viewed so it can say whether a number went up or down. Anything that
+ * shows a single season should use `useCompanies`.
+ */
+export function useCompaniesForSeason(slug: string | null | undefined) {
+  return useQuery({
+    queryKey: qk.companies.list(undefined, slug),
+    queryFn: () => api.companies.list(undefined, slug),
+    enabled: Boolean(slug),
+  });
+}
+
+export function useCompanyHistory(id: string | undefined) {
+  return useQuery({
+    queryKey: qk.companies.history(id ?? ""),
+    queryFn: () => api.companies.history(id as string),
+    enabled: Boolean(id),
   });
 }
 
@@ -61,11 +93,16 @@ export function useCompany(id: string | undefined) {
 
 export function useCreateCompany() {
   const queryClient = useQueryClient();
+  const { season, isArchive } = useSeason();
   return useMutation({
-    mutationFn: (input: Partial<Company>) => api.companies.create(input),
+    mutationFn: (input: Partial<Company>) => api.companies.create(input, season),
     onSuccess: (company) => {
       queryClient.invalidateQueries({ queryKey: qk.companies.all });
-      toast.success(`${company.name} added`);
+      queryClient.invalidateQueries({ queryKey: qk.seasons });
+      // Naming the year only when it is not the live one: on the current
+      // season it is noise, on an archive year it is the confirmation that
+      // the row went where it was meant to.
+      toast.success(isArchive ? `${company.name} added to ${season}` : `${company.name} added`);
     },
     ...mutationDefaults("Could not add the company"),
   });
@@ -215,7 +252,52 @@ export function useAdminUsers(search: string, page: number, enabled: boolean) {
 }
 
 export function useAdminStats(enabled: boolean) {
-  return useQuery({ queryKey: qk.admin.stats, queryFn: () => api.admin.stats(), enabled });
+  const { season } = useSeason();
+  return useQuery({
+    queryKey: qk.admin.stats(season),
+    queryFn: () => api.admin.stats(season),
+    enabled,
+  });
+}
+
+/** Season management, admin-only. Reads come from the public list. */
+export function useCreateSeason() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { slug: string; label?: string; make_current?: boolean }) =>
+      api.seasons.create(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: qk.seasons });
+      queryClient.invalidateQueries({ queryKey: qk.companies.all });
+      toast.success("Season created");
+    },
+    ...mutationDefaults("Could not create the season"),
+  });
+}
+
+export function useSetCurrentSeason() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (slug: string) => api.seasons.setCurrent(slug),
+    onSuccess: (_result, slug) => {
+      queryClient.invalidateQueries({ queryKey: qk.seasons });
+      queryClient.invalidateQueries({ queryKey: qk.companies.all });
+      toast.success(`${slug} is now the live season`);
+    },
+    ...mutationDefaults("Could not change the current season"),
+  });
+}
+
+export function useDeleteSeason() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (slug: string) => api.seasons.remove(slug),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: qk.seasons });
+      toast.success("Season deleted");
+    },
+    ...mutationDefaults("Could not delete the season"),
+  });
 }
 
 export function useSetUserRole() {
@@ -250,7 +332,9 @@ export function useDeleteUser() {
     mutationFn: (userId: string) => api.admin.removeUser(userId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
-      queryClient.invalidateQueries({ queryKey: qk.admin.stats });
+      // Prefix, so every season's cached counts are dropped, not just the one
+      // being viewed.
+      queryClient.invalidateQueries({ queryKey: ["admin", "stats"] });
       toast.success("Account deleted");
     },
     ...mutationDefaults("Could not delete the account"),

@@ -20,6 +20,7 @@ import { CompanyForm } from "@/components/companies/CompanyForm";
 import { ExperienceForm } from "@/components/companies/ExperienceForm";
 import { QuestionForm } from "@/components/companies/QuestionForm";
 import { RoundTimeline } from "@/components/companies/RoundTimeline";
+import { CompanyHistory } from "@/components/companies/CompanyHistory";
 import { TrackingControls } from "@/components/companies/TrackingControls";
 import { AttachmentsPanel } from "@/components/attachments/AttachmentsPanel";
 import { CommentThread } from "@/components/discussion/CommentThread";
@@ -165,6 +166,11 @@ const CompanyDetail = () => {
                 <h1 className="font-display text-3xl font-semibold tracking-tight">{company.name}</h1>
                 <div className="mt-2.5 flex flex-wrap items-center gap-2">
                   <PhaseChip phase={phase} />
+                  {company.season && (
+                    <Badge variant="outline" className="font-mono text-2xs tabular">
+                      {company.season.slug}
+                    </Badge>
+                  )}
                   {company.job_location && (
                     <span className="inline-flex items-center gap-1 text-sm text-muted-foreground">
                       <MapPin className="h-3.5 w-3.5" />
@@ -420,6 +426,8 @@ const CompanyDetail = () => {
 
         <aside className="space-y-5">
           {user && <TrackingControls companyId={company.id} />}
+
+          <CompanyHistory companyId={company.id} />
 
           <Card>
             <CardHeader className="pb-3">

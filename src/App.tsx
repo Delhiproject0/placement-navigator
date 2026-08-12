@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
+import { SeasonProvider } from "@/hooks/useSeason";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
@@ -66,64 +67,66 @@ const App = () => (
       <ThemeProvider>
         <BrowserRouter>
           <AuthProvider>
-            <TooltipProvider delayDuration={200}>
-              <Toaster />
-              <ScrollToTop />
-              <CommandPalette />
-              <Suspense fallback={<RouteFallback />}>
-                <Routes>
-                  <Route path="/" element={<Index />} />
-                  <Route path="/auth" element={<Auth />} />
-                  <Route path="/companies" element={<Companies />} />
-                  <Route path="/companies/:id" element={<CompanyDetail />} />
-                  <Route path="/analytics" element={<Analytics />} />
-                  <Route path="/calendar" element={<CalendarPage />} />
+            <SeasonProvider>
+              <TooltipProvider delayDuration={200}>
+                <Toaster />
+                <ScrollToTop />
+                <CommandPalette />
+                <Suspense fallback={<RouteFallback />}>
+                  <Routes>
+                    <Route path="/" element={<Index />} />
+                    <Route path="/auth" element={<Auth />} />
+                    <Route path="/companies" element={<Companies />} />
+                    <Route path="/companies/:id" element={<CompanyDetail />} />
+                    <Route path="/analytics" element={<Analytics />} />
+                    <Route path="/calendar" element={<CalendarPage />} />
 
-                  <Route
-                    path="/me"
-                    element={
-                      <ProtectedRoute>
-                        <Profile />
-                      </ProtectedRoute>
-                    }
-                  />
-                  <Route
-                    path="/me/bookmarks"
-                    element={
-                      <ProtectedRoute>
-                        <Bookmarks />
-                      </ProtectedRoute>
-                    }
-                  />
-                  <Route
-                    path="/me/applications"
-                    element={
-                      <ProtectedRoute>
-                        <Applications />
-                      </ProtectedRoute>
-                    }
-                  />
-                  <Route
-                    path="/me/contributions"
-                    element={
-                      <ProtectedRoute>
-                        <Contributions />
-                      </ProtectedRoute>
-                    }
-                  />
-                  <Route
-                    path="/admin"
-                    element={
-                      <ProtectedRoute requireAdmin>
-                        <Admin />
-                      </ProtectedRoute>
-                    }
-                  />
+                    <Route
+                      path="/me"
+                      element={
+                        <ProtectedRoute>
+                          <Profile />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/me/bookmarks"
+                      element={
+                        <ProtectedRoute>
+                          <Bookmarks />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/me/applications"
+                      element={
+                        <ProtectedRoute>
+                          <Applications />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/me/contributions"
+                      element={
+                        <ProtectedRoute>
+                          <Contributions />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/admin"
+                      element={
+                        <ProtectedRoute requireAdmin>
+                          <Admin />
+                        </ProtectedRoute>
+                      }
+                    />
 
-                  <Route path="*" element={<NotFound />} />
-                </Routes>
-              </Suspense>
-            </TooltipProvider>
+                    <Route path="*" element={<NotFound />} />
+                  </Routes>
+                </Suspense>
+              </TooltipProvider>
+            </SeasonProvider>
           </AuthProvider>
         </BrowserRouter>
       </ThemeProvider>

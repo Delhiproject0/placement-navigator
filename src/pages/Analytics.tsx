@@ -20,17 +20,33 @@ import { ChartCard, ChartTooltip } from "@/components/charts/ChartCard";
 import { EmptyState } from "@/components/EmptyState";
 import { Shimmer } from "@/components/skeletons/CompanyTableSkeleton";
 import { Card, CardContent } from "@/components/ui/card";
-import { useCompanies } from "@/hooks/queries";
+import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
+import { useCompanies, useCompaniesForSeason } from "@/hooks/queries";
+import { useSeason } from "@/hooks/useSeason";
 import { useChartColors } from "@/hooks/useChartColors";
 import { formatCtc, parseCtcToNumber } from "@/lib/ctc";
 import { PHASES, phaseMeta, resolvePhase } from "@/lib/phase";
+import { cn } from "@/lib/utils";
 import type { Company } from "@/types/database";
 
 const LAKH = 100_000;
 
 const Analytics = () => {
   const { data: companies = [], isPending } = useCompanies();
+  const { season, seasons, isArchive } = useSeason();
   const chart = useChartColors();
+
+  // The season immediately before the one being viewed, by slug order. Only
+  // ever used for the year-on-year deltas on the headline stats.
+  const previousSeason = useMemo(() => {
+    if (!season) return null;
+    const ordered = [...seasons].sort((a, b) => b.slug.localeCompare(a.slug));
+    const index = ordered.findIndex((entry) => entry.slug === season);
+    if (index < 0) return null;
+    return ordered.slice(index + 1).find((entry) => entry.company_count > 0) ?? null;
+  }, [season, seasons]);
+
+  const { data: previousCompanies } = useCompaniesForSeason(previousSeason?.slug);
 
   // Recessive hairline grid, one step off the surface.
   const GRID = { stroke: chart.get("--border"), strokeWidth: 1 };
@@ -38,6 +54,11 @@ const Analytics = () => {
   const CURSOR_FILL = { fill: chart.get("--muted"), fillOpacity: 0.5 };
 
   const model = useMemo(() => buildModel(companies), [companies]);
+  const previousModel = useMemo(
+    () => (previousCompanies ? buildModel(previousCompanies) : null),
+    [previousCompanies],
+  );
+  const against = previousSeason?.slug ?? null;
 
   if (isPending) {
     return (
@@ -83,20 +104,40 @@ const Analytics = () => {
         <div className="mb-7">
           <h1 className="font-display text-3xl font-semibold tracking-tight">Analytics</h1>
           <p className="mt-1.5 text-sm text-muted-foreground">
-            The season so far, across {companies.length} {companies.length === 1 ? "company" : "companies"}.
-            CTC figures are parsed from free text and self-reported.
+            {isArchive ? `The ${season} season` : "The season so far"}, across {companies.length}{" "}
+            {companies.length === 1 ? "company" : "companies"}. CTC figures are parsed from free
+            text and self-reported.
+            {against && ` Changes are against ${against}.`}
           </p>
         </div>
 
         <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatTile label="Companies" value={String(companies.length)} />
-          <StatTile label="Offers made" value={String(model.totalOffers)} />
+          <StatTile
+            label="Companies"
+            value={String(companies.length)}
+            change={compare(companies.length, previousModel?.count ?? null, against, String)}
+          />
+          <StatTile
+            label="Offers made"
+            value={String(model.totalOffers)}
+            change={compare(model.totalOffers, previousModel?.totalOffers ?? null, against, String)}
+          />
           <StatTile
             label="Median CTC"
             value={model.medianCtc ? formatCtc(model.medianCtc) : "--"}
             hint={`${model.ctcCount} disclosed`}
+            change={compare(
+              model.medianCtc,
+              previousModel?.medianCtc ?? null,
+              against,
+              formatCtc,
+            )}
           />
-          <StatTile label="Highest CTC" value={model.maxCtc ? formatCtc(model.maxCtc) : "--"} />
+          <StatTile
+            label="Highest CTC"
+            value={model.maxCtc ? formatCtc(model.maxCtc) : "--"}
+            change={compare(model.maxCtc, previousModel?.maxCtc ?? null, against, formatCtc)}
+          />
         </div>
 
         <div className="grid gap-5 lg:grid-cols-2">
@@ -319,16 +360,77 @@ function ScatterTooltip({
  * every digit the width of a zero, which makes a standalone number look loose
  * at display sizes. Tabular is for columns that have to align.
  */
-function StatTile({ label, value, hint }: { label: string; value: string; hint?: string }) {
+function StatTile({
+  label,
+  value,
+  hint,
+  change,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  change?: Change | null;
+}) {
   return (
     <Card>
       <CardContent className="p-5">
         <p className="text-2xs uppercase tracking-wider text-muted-foreground">{label}</p>
         <p className="mt-1 text-3xl font-semibold">{value}</p>
+        {change && (
+          <p
+            className={cn(
+              "mt-1 inline-flex items-center gap-1 text-2xs",
+              change.direction === "up"
+                ? "text-success"
+                : change.direction === "down"
+                  ? "text-destructive"
+                  : "text-muted-foreground",
+            )}
+            title={`Against ${change.against}`}
+          >
+            {change.direction === "up" ? (
+              <ArrowUpRight className="h-3 w-3" />
+            ) : change.direction === "down" ? (
+              <ArrowDownRight className="h-3 w-3" />
+            ) : (
+              <Minus className="h-3 w-3" />
+            )}
+            <span className="tabular">{change.text}</span>
+            <span className="text-muted-foreground">vs {change.against}</span>
+          </p>
+        )}
         {hint && <p className="mt-0.5 text-2xs text-muted-foreground">{hint}</p>}
       </CardContent>
     </Card>
   );
+}
+
+interface Change {
+  direction: "up" | "down" | "flat";
+  text: string;
+  against: string;
+}
+
+/**
+ * A stat against the same stat a year earlier.
+ *
+ * The comparison is what makes an archive worth keeping: "median 14L" says
+ * very little on its own, and a great deal next to last year's 12L.
+ */
+function compare(
+  now: number | null,
+  before: number | null,
+  against: string | null,
+  format: (value: number) => string,
+): Change | null {
+  if (now === null || before === null || before === 0 || !against) return null;
+  const delta = now - before;
+  if (delta === 0) return { direction: "flat", text: "no change", against };
+  return {
+    direction: delta > 0 ? "up" : "down",
+    text: `${delta > 0 ? "+" : "-"}${format(Math.abs(delta))}`,
+    against,
+  };
 }
 
 function buildModel(companies: Company[]) {
@@ -428,6 +530,7 @@ function buildModel(companies: Company[]) {
     topRoles,
     scatter,
     offersByMonth,
+    count: companies.length,
     medianCtc,
     maxCtc: ctcValues.length ? ctcValues[ctcValues.length - 1] : null,
     ctcCount: ctcValues.length,

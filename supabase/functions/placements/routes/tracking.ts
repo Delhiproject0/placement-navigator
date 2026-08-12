@@ -8,6 +8,7 @@
  */
 
 import { db, type Caller } from "../context.ts";
+import { flattenSeason } from "./companies.ts";
 import { fail, json, readJson, str } from "../http.ts";
 
 const STAGES = new Set([
@@ -22,17 +23,26 @@ const STAGES = new Set([
   "accepted",
 ]);
 
+/** Flattens the season joined onto the nested company row. */
+function withSeason<T extends { companies?: unknown }>(row: T) {
+  const company = Array.isArray(row.companies) ? row.companies[0] : row.companies;
+  if (!company) return row;
+  return { ...row, companies: flattenSeason(company as { seasons?: unknown }) };
+}
+
 // --- bookmarks -------------------------------------------------------------
 
 export async function listBookmarks(caller: Caller): Promise<Response> {
   const { data, error } = await db
     .from("bookmarks")
-    .select("id, created_at, companies(*)")
+    .select("id, created_at, companies(*, seasons(slug, label))")
     .eq("user_id", caller.id)
     .order("created_at", { ascending: false });
 
   if (error) return fail(500, "QUERY_FAILED", "Could not load your saved companies");
-  return json({ bookmarks: data ?? [] });
+  // Saved companies span every season a person has been here for, so each row
+  // carries its year - three "Solstice Labs" in one list is otherwise a puzzle.
+  return json({ bookmarks: (data ?? []).map(withSeason) });
 }
 
 /** Ids only, so a list page can mark rows without fetching each company twice. */
@@ -75,12 +85,12 @@ export async function removeBookmark(companyId: string, caller: Caller): Promise
 export async function listApplications(caller: Caller): Promise<Response> {
   const { data, error } = await db
     .from("applications")
-    .select("*, companies(*)")
+    .select("*, companies(*, seasons(slug, label))")
     .eq("user_id", caller.id)
     .order("updated_at", { ascending: false });
 
   if (error) return fail(500, "QUERY_FAILED", "Could not load your applications");
-  return json({ applications: data ?? [] });
+  return json({ applications: (data ?? []).map(withSeason) });
 }
 
 export async function upsertApplication(req: Request, caller: Caller): Promise<Response> {
@@ -101,11 +111,11 @@ export async function upsertApplication(req: Request, caller: Caller): Promise<R
   const { data, error } = await db
     .from("applications")
     .upsert(values, { onConflict: "user_id,company_id" })
-    .select("*, companies(*)")
+    .select("*, companies(*, seasons(slug, label))")
     .single();
 
   if (error) return fail(500, "UPSERT_FAILED", "Could not update your application");
-  return json({ application: data });
+  return json({ application: withSeason(data) });
 }
 
 export async function removeApplication(companyId: string, caller: Caller): Promise<Response> {

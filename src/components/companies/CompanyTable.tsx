@@ -65,6 +65,16 @@ export const CompanyTable = ({
 }: CompanyTableProps) => {
   const navigate = useNavigate();
 
+  /**
+   * The year is shown against each name only when the rows span more than one
+   * season - which happens on the saved and applications lists, never on the
+   * season-scoped company list. Three rows all reading "Solstice Labs" are
+   * otherwise indistinguishable; a badge on every row of a single-season list
+   * would just be noise.
+   */
+  const mixedSeasons =
+    new Set(companies.map((company) => company.season?.slug).filter(Boolean)).size > 1;
+
   if (loading) return <CompanyTableSkeleton />;
 
   if (companies.length === 0) {
@@ -150,6 +160,11 @@ export const CompanyTable = ({
                     <span className="transition-colors group-hover:text-primary">
                       {company.name}
                     </span>
+                    {mixedSeasons && company.season && (
+                      <span className="shrink-0 rounded-xs bg-muted px-1 font-mono text-2xs tabular text-muted-foreground">
+                        {company.season.slug}
+                      </span>
+                    )}
                   </div>
                 </TableCell>
 
@@ -261,7 +276,14 @@ export const CompanyTable = ({
               <div className="flex min-w-0 items-center gap-3">
                 <CompanyLogo name={company.name} url={company.logo_url} />
                 <div className="min-w-0">
-                  <p className="truncate font-medium">{company.name}</p>
+                  <p className="truncate font-medium">
+                    {company.name}
+                    {mixedSeasons && company.season && (
+                      <span className="ml-1.5 font-mono text-2xs tabular text-muted-foreground">
+                        {company.season.slug}
+                      </span>
+                    )}
+                  </p>
                   {company.job_location && (
                     <p className="truncate text-xs text-muted-foreground">{company.job_location}</p>
                   )}

@@ -7,6 +7,10 @@ interview experiences and questions students contribute after each drive.
 
 ## What it does
 
+- **Seasons** - the whole site is an archive as well as a noticeboard. A year
+  selector in the header scopes every page, so you can read 2023-24 exactly as it
+  stood, and each company page shows what that employer paid and how many it took
+  in previous years. Seasons run August to July.
 - **Companies** - the drive calendar: registration deadlines, PPT / OA / interview
   slots, CGPA cutoffs, CTC breakdowns, roles, bond terms, and how many people were
   selected. Sortable and filterable, with imminent deadlines called out.

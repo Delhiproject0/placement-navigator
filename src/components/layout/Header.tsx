@@ -14,6 +14,7 @@ import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/s
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
+import { SeasonSelect } from "@/components/SeasonSelect";
 import { BarChart3, BookMarked, CalendarDays, LayoutGrid, LogOut, Menu, Search, Shield, User as UserIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -117,6 +118,8 @@ export const Header = () => {
               {navigator.platform.toLowerCase().includes("mac") ? "\u2318" : "Ctrl"}K
             </kbd>
           </button>
+
+          <SeasonSelect />
 
           <ThemeToggle className="hidden sm:inline-flex" />
 

@@ -124,14 +124,26 @@ export async function deleteUser(userId: string, caller: Caller): Promise<Respon
   return json({ success: true });
 }
 
-export async function stats(): Promise<Response> {
+/**
+ * Dashboard counts.
+ *
+ * These stay all-time on purpose - an admin looking at the dashboard wants to
+ * know how big the archive is, not how this August is going. The one
+ * season-scoped number is the company count for the season being viewed,
+ * returned alongside rather than instead of the total.
+ */
+export async function stats(seasonId: string | undefined): Promise<Response> {
   // head: true means only the count comes back. The old version selected every
   // id just to call .length on it.
-  const [companies, experiences, questions, users] = await Promise.all([
+  const [companies, experiences, questions, users, seasons, seasonCompanies] = await Promise.all([
     db.from("companies").select("id", { count: "exact", head: true }),
     db.from("interview_experiences").select("id", { count: "exact", head: true }),
     db.from("interview_questions").select("id", { count: "exact", head: true }),
     db.from("app_users").select("id", { count: "exact", head: true }),
+    db.from("seasons").select("id", { count: "exact", head: true }),
+    seasonId
+      ? db.from("companies").select("id", { count: "exact", head: true }).eq("season_id", seasonId)
+      : Promise.resolve({ count: null }),
   ]);
 
   return json({
@@ -139,5 +151,7 @@ export async function stats(): Promise<Response> {
     experiences: experiences.count ?? 0,
     questions: questions.count ?? 0,
     users: users.count ?? 0,
+    seasons: seasons.count ?? 0,
+    season_companies: seasonCompanies.count,
   });
 }

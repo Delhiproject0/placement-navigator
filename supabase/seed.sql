@@ -16,11 +16,27 @@ update public.user_roles set role = 'admin'
 update public.user_roles set role = 'editor'
   where user_id = (select id from public.app_users where email = 'editor@iiit.ac.in');
 
+-- ============================================================================
+-- Seasons
+--
+-- Three, so the year selector and the per-company history are exercisable
+-- locally. On the live database the migration infers seasons from the existing
+-- rows instead; this only ever runs against a fresh local one.
+-- ============================================================================
+
+select public.ensure_season('2023-24');
+select public.ensure_season('2024-25');
+select public.ensure_season('2025-26');
+
+update public.seasons set is_current = false;
+update public.seasons set is_current = true where slug = '2025-26';
+
 -- Companies, one per phase so every branch of resolvePhase() has a row.
 insert into public.companies
-  (name, description, job_location, offered_ctc, ctc_distribution, cgpa_cutoff, roles,
+  (season_id, name, description, job_location, offered_ctc, ctc_distribution, cgpa_cutoff, roles,
    people_selected, registration_deadline, ppt_datetime, oa_datetime, interview_datetime, status)
-values
+select (select id from public.seasons where slug = '2025-26'), *
+from (values
   ('Wavelength Systems', 'Embedded and signal processing.', 'Bengaluru',
    'INR 34,05,000', 'Base 24L, Bonus 4L, ESOP 6L', 7.00, array['SDE', 'Hardware'],
    null, now() + interval '10 days', now() + interval '14 days',
@@ -64,7 +80,63 @@ values
   ('Aperture Systems', 'Announced, dates to follow.', null, '13.5', null, null,
    array['SDE'], null, null, null, null, null, 'upcoming'),
   ('Tessellate AI', 'Announced, dates to follow.', null, null, null, null,
-   null, null, null, null, null, null, 'upcoming');
+   null::text[], null::integer, null::timestamptz, null::timestamptz, null::timestamptz,
+   null::timestamptz, 'upcoming'::public.placement_status)
+) as v;
+
+-- ============================================================================
+-- Previous seasons
+--
+-- Deliberately includes organisations that also appear in 2025-26, so the
+-- "previous seasons" panel on a company page has something real to show and
+-- the org_slug matching is exercised rather than assumed.
+-- ============================================================================
+
+insert into public.companies
+  (season_id, name, job_location, offered_ctc, cgpa_cutoff, roles, people_selected,
+   registration_deadline, oa_datetime, interview_datetime, status)
+select (select id from public.seasons where slug = '2024-25'), *
+from (values
+  ('Solstice Labs', 'Bengaluru', 'INR 46,00,000', 8.00, array['Research Engineer'], 3,
+   '2024-10-05'::timestamptz, '2024-10-20'::timestamptz, '2024-11-02'::timestamptz,
+   'completed'::public.placement_status),
+  ('Meridian Cloud', 'Bengaluru', 'INR 38,00,000', 7.50, array['SDE'], 6,
+   '2024-09-18'::timestamptz, '2024-10-01'::timestamptz, '2024-10-14'::timestamptz, 'completed'),
+  ('Cobalt Semiconductors', 'Noida', '16,00,000 INR', 7.00, array['Design Verification'], 9,
+   '2024-09-02'::timestamptz, '2024-09-16'::timestamptz, '2024-09-28'::timestamptz, 'completed'),
+  ('Harbour Analytics', 'Mumbai', '18 LPA', 7.50, array['Analyst'], 4,
+   '2024-11-10'::timestamptz, '2024-11-24'::timestamptz, '2024-12-06'::timestamptz, 'completed')
+) as v;
+
+insert into public.companies
+  (season_id, name, job_location, offered_ctc, cgpa_cutoff, roles, people_selected,
+   registration_deadline, oa_datetime, interview_datetime, status)
+select (select id from public.seasons where slug = '2023-24'), *
+from (values
+  ('Solstice Labs', 'Bengaluru', 'INR 39,00,000', 8.50, array['Research Engineer'], 2,
+   '2023-10-08'::timestamptz, '2023-10-22'::timestamptz, '2023-11-05'::timestamptz,
+   'completed'::public.placement_status),
+  ('Cobalt Semiconductors', 'Noida', '14,00,000 INR', 7.00, array['Design Verification'], 7,
+   '2023-09-05'::timestamptz, '2023-09-19'::timestamptz, '2023-10-01'::timestamptz, 'completed'),
+  ('Ferrous Motors', 'Chennai', '12 LPA', 6.50, array['Embedded'], 11,
+   '2023-08-28'::timestamptz, '2023-09-12'::timestamptz, '2023-09-25'::timestamptz, 'completed')
+) as v;
+
+-- An experience on a *previous* season's row, so the archive has content and
+-- it can be verified that it never leaks into the current season.
+insert into public.interview_experiences
+  (company_id, user_id, round_name, experience, difficulty, result, tips)
+select
+  c.id,
+  (select id from public.app_users where email = 'student@iiit.ac.in'),
+  'Technical Interview',
+  'The 2024 round was noticeably easier than this year - two medium DSA questions and a long discussion about my internship. They cared far more about the internship than about competitive programming.',
+  'Medium',
+  'Selected',
+  'Know your internship work end to end. Half the interview was on it.'
+from public.companies c
+join public.seasons s on s.id = c.season_id
+where c.name = 'Solstice Labs' and s.slug = '2024-25';
 
 -- Contributions from the student account.
 insert into public.interview_experiences

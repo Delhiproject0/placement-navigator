@@ -72,11 +72,22 @@ export async function serveCalendar(token: string): Promise<Response> {
   // anyway; the token identifies whose subscription it is, not what they may
   // see. Bookmarked companies are listed first in the description so a
   // subscriber can tell theirs apart.
+  //
+  // Always the *current* season, never a selected one: a subscription is a
+  // standing thing, and the point of it is upcoming dates. It follows the
+  // rollover on its own, so nobody has to resubscribe each August.
+  const { data: season } = await db
+    .from("seasons")
+    .select("id")
+    .eq("is_current", true)
+    .maybeSingle();
+
   const { data: companies } = await db
     .from("companies")
     .select(
       "id, name, job_location, registration_deadline, ppt_datetime, oa_datetime, interview_datetime, offered_ctc",
-    );
+    )
+    .eq("season_id", season?.id ?? "00000000-0000-0000-0000-000000000000");
 
   const ics = buildIcs(
     companyEvents((companies ?? []) as CalendarCompany[], SITE_URL),

@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { AlertTriangle, CheckCircle2, FileUp, Loader2, Upload } from "lucide-react";
+import { AlertTriangle, CalendarRange, CheckCircle2, FileUp, Loader2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -15,6 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { api, ApiError, type ImportResult } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 import { parseCsvObjects } from "@/lib/csv";
+import { useSeason } from "@/hooks/useSeason";
 import { cn } from "@/lib/utils";
 
 /**
@@ -27,6 +28,7 @@ import { cn } from "@/lib/utils";
  */
 export function ImportDialog() {
   const queryClient = useQueryClient();
+  const { season, isArchive } = useSeason();
   const [open, setOpen] = useState(false);
   const [rows, setRows] = useState<Record<string, string>[]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
@@ -43,7 +45,7 @@ export function ImportDialog() {
   };
 
   const handleFile = async (file: File | undefined) => {
-    if (!file) return;
+    if (!file || !season) return;
     if (!/\.csv$/i.test(file.name) && file.type !== "text/csv") {
       toast.error("That does not look like a CSV file");
       return;
@@ -61,7 +63,7 @@ export function ImportDialog() {
     setRows(parsed.rows);
     setBusy(true);
     try {
-      setPreview(await api.companiesImport.run(parsed.rows, true));
+      setPreview(await api.companiesImport.run(parsed.rows, season, true));
     } catch (error) {
       toast.error(error instanceof ApiError ? error.message : "Could not read that file");
       reset();
@@ -71,11 +73,15 @@ export function ImportDialog() {
   };
 
   const apply = async () => {
+    if (!season) return;
     setBusy(true);
     try {
-      const result = await api.companiesImport.run(rows, false);
+      const result = await api.companiesImport.run(rows, season, false);
       queryClient.invalidateQueries({ queryKey: qk.companies.all });
-      toast.success(`Imported: ${result.created ?? 0} added, ${result.updated ?? 0} updated`);
+      queryClient.invalidateQueries({ queryKey: qk.seasons });
+      toast.success(
+        `Imported into ${season}: ${result.created ?? 0} added, ${result.updated ?? 0} updated`,
+      );
       setOpen(false);
       reset();
     } catch (error) {
@@ -104,10 +110,36 @@ export function ImportDialog() {
         <DialogHeader>
           <DialogTitle className="font-display">Import companies from CSV</DialogTitle>
           <DialogDescription>
-            Rows are matched by company name - an existing company is updated rather than
-            duplicated. Nothing is written until you confirm.
+            Rows are matched by company name within the target season - an existing company is
+            updated rather than duplicated. Nothing is written until you confirm.
           </DialogDescription>
         </DialogHeader>
+
+        {/* The target comes from the header selector, which is nowhere near
+            this dialog, so it is stated rather than assumed - importing a
+            season's worth of drives into the wrong year is a slow thing to
+            undo. */}
+        <div
+          className={cn(
+            "flex items-center gap-2 rounded-md border p-3 text-sm",
+            isArchive
+              ? "border-warning/40 bg-warning/10 text-warning"
+              : "border-border bg-muted/30 text-muted-foreground",
+          )}
+        >
+          {isArchive ? (
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+          ) : (
+            <CalendarRange className="h-4 w-4 shrink-0" />
+          )}
+          <span>
+            {isArchive ? "These rows will be written to the " : "Importing into "}
+            <strong className="font-mono tabular">{season ?? "..."}</strong>
+            {isArchive
+              ? " archive, not the live season. Change the year in the header if that is wrong."
+              : " season."}
+          </span>
+        </div>
 
         {!preview ? (
           <>

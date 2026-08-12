@@ -212,6 +212,60 @@ headers to SQL, and `dbAs(caller)` in `context.ts` returns a client that attache
 the plain client is not an error, it just silently records the change as
 "outside the app".
 
+## Seasons
+
+The site is a dictionary of past placement cycles as well as a noticeboard for
+the current one. A season is a year of hiring, running **August to July** (the
+Indian academic year), keyed by a slug like `2024-25`.
+
+**A `companies` row is one company's drive in one season, not a company.** The
+same employer across three years is three rows. That was the whole decision:
+splitting into `organisations` + `drives` reads better on a whiteboard, but all
+six existing foreign keys - experiences, questions, comments, bookmarks,
+applications, attachments - point at `companies`, so with this shape they all
+become season-scoped for free and nothing had to be re-pointed.
+
+Rows are linked across years by `org_slug`, derived by `org_slug_for(name)`,
+which lowercases and strips repeated corporate suffixes so `Acme`,
+`Acme Pvt. Ltd.` and `Acme India Private Limited` all reduce to `acme`. It is a
+heuristic and it is stated as one in the UI - a company that genuinely renames
+itself will not link up, and inventing a manual override for a rare case is
+worse than the sentence under the panel.
+
+Resolving "which season" happens once, in `resolveSeasonId(url)`:
+
+| `?season=` | Result |
+|---|---|
+| absent | the current season |
+| a known slug | that season |
+| `all` | every season |
+| an unknown slug | **nothing** |
+
+That last row is deliberate. Answering a `?season=2019-20` URL with this year's
+companies is how an archive stops being trustworthy - showing nothing is the
+honest answer.
+
+Things that are **not** scoped to the selected season, each for a reason:
+
+- **The calendar feed** (`/calendar/{token}.ics`) always follows the *current*
+  season. A subscription is a standing thing about upcoming dates; scoping it
+  to a selection would mean resubscribing every August.
+- **Bookmarks and applications** span every season, because a company saved
+  last year should stay saved. Each row carries its season so the same name
+  appearing three times is legible.
+- **Admin dashboard counts** are all-time, with the selected season's company
+  count shown underneath.
+
+Writes take the season from the selector, never from the dates: creating a
+company while viewing 2023-24 files it under 2023-24, and a CSV import matches
+existing rows by name **within the target season only**. A database trigger
+does infer a season from the deadline, but only as a fallback for rows that
+arrive without one.
+
+`is_current` is enforced single by a partial unique index, so
+`setCurrentSeasonById` must clear the old flag before setting the new one -
+the other order trips the index.
+
 ## Discussion and votes
 
 Comments are one level deep by design: a reply to a reply is attached to the
