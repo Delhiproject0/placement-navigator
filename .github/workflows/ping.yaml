@@ -3,12 +3,18 @@ name: Ping Supabase to Prevent Pausing
 # Free-tier projects pause after a week of inactivity. This keeps the project
 # warm by making one real query twice a week.
 #
-# The previous version of this workflow had been failing on every run since
-# March 2026: the repository had no Actions secrets defined at all, so
-# ${SUPABASE_URL} expanded to the empty string. It also queried /rest/v1/ bare,
-# which returns a body even for a project that no longer exists - so the
-# assertion could not have caught the real failure either. Both are fixed here:
-# a real table is queried, and the response must parse as a JSON array.
+# Either key works, and that is deliberate rather than lazy. This repository is
+# forked, and the two copies were set up years apart with different secrets:
+# upstream has SUPABASE_SERVICE_ROLE_KEY (since 2025-12), the fork has
+# SUPABASE_ANON_KEY (since 2026-08). An earlier rewrite of this file read only
+# the anon key, which fixed the fork - failing every run since 2026-03 because
+# it had no secrets at all - and broke upstream, which had been green until the
+# change landed on its default branch. Accepting either means neither copy
+# depends on which secret its owner happened to add.
+#
+# The read itself is deliberately narrow: one id from one table. The old
+# version queried /rest/v1/ bare, which returns a body even for a project that
+# no longer exists, so it could not tell a live project from a dead one.
 
 on:
   schedule:
@@ -25,18 +31,33 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           set -euo pipefail
 
-          if [ -z "${SUPABASE_URL}" ] || [ -z "${SUPABASE_ANON_KEY}" ]; then
-            echo "::error::SUPABASE_URL / SUPABASE_ANON_KEY repository secrets are not set." >&2
+          if [ -z "${SUPABASE_URL:-}" ]; then
+            echo "::error::The SUPABASE_URL repository secret is not set." >&2
+            exit 1
+          fi
+
+          # The anon key is preferred: this only needs to read one public row,
+          # and reaching for the service role to do that would hand the job
+          # more authority than the task warrants.
+          if [ -n "${SUPABASE_ANON_KEY:-}" ]; then
+            key="${SUPABASE_ANON_KEY}"
+            echo "Authenticating with SUPABASE_ANON_KEY."
+          elif [ -n "${SUPABASE_SERVICE_ROLE_KEY:-}" ]; then
+            key="${SUPABASE_SERVICE_ROLE_KEY}"
+            echo "Authenticating with SUPABASE_SERVICE_ROLE_KEY (no anon key set)."
+          else
+            echo "::error::Set either SUPABASE_ANON_KEY or SUPABASE_SERVICE_ROLE_KEY as a repository secret." >&2
             exit 1
           fi
 
           status=$(curl -sS -o response.json -w '%{http_code}' \
             "${SUPABASE_URL}/rest/v1/companies?select=id&limit=1" \
-            -H "apikey: ${SUPABASE_ANON_KEY}" \
-            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}")
+            -H "apikey: ${key}" \
+            -H "Authorization: Bearer ${key}")
 
           if [ "${status}" != "200" ]; then
             echo "::error::Expected HTTP 200, got ${status}." >&2
