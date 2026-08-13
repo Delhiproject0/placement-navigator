@@ -117,7 +117,10 @@ const Auth = () => {
         title="Sign in"
         description="Sign in to contribute interview experiences and track your applications."
       />
-      <div className="relative flex min-h-[calc(100vh-4rem)] items-center justify-center px-5 py-12">
+      {/* overflow-hidden because the decorative glow below is 320px wide and
+          centred, so on a 320px screen it hung 4px off the right edge and gave
+          the page a horizontal scrollbar. */}
+      <div className="relative flex min-h-[calc(100vh-4rem)] items-center justify-center overflow-hidden px-5 py-12">
         <div className="bg-dot-grid absolute inset-0 opacity-60" aria-hidden />
         <div
           className="absolute left-1/2 top-1/4 h-80 w-80 -translate-x-1/2 rounded-[999px] bg-primary/10 blur-3xl"
@@ -286,12 +289,16 @@ const Field = ({ label, id, error, hint, children }: FieldProps) => (
   </div>
 );
 
+/**
+ * The icon is 16px. The button carries a 36px hit area around it so it can be
+ * tapped with a thumb rather than only clicked with a cursor.
+ */
 const PasswordToggle = ({ show, onToggle }: { show: boolean; onToggle: () => void }) => (
   <button
     type="button"
     onClick={onToggle}
     aria-label={show ? "Hide password" : "Show password"}
-    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+    className="absolute right-1 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-sm text-muted-foreground transition-colors hover:text-foreground"
   >
     {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
   </button>

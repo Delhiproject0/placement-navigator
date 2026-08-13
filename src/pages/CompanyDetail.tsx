@@ -278,8 +278,8 @@ const CompanyDetail = () => {
         </div>
       </div>
 
-      <div className="container grid gap-8 py-8 lg:grid-cols-3">
-        <div className="lg:col-span-2">
+      <div className="container grid grid-cols-1 gap-8 py-8 lg:grid-cols-3">
+        <div className="min-w-0 lg:col-span-2">
           <Tabs defaultValue="experiences">
             <TabsList>
               <TabsTrigger value="experiences">
@@ -424,7 +424,7 @@ const CompanyDetail = () => {
           </Tabs>
         </div>
 
-        <aside className="space-y-5">
+        <aside className="min-w-0 space-y-5">
           {user && <TrackingControls companyId={company.id} />}
 
           <CompanyHistory companyId={company.id} />

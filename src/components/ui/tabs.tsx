@@ -12,7 +12,10 @@ const TabsList = React.forwardRef<
   <TabsPrimitive.List
     ref={ref}
     className={cn(
-      "inline-flex h-10 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground",
+      // Wraps rather than running off the page. A fixed h-10 single row put
+      // the three company tabs 22px past a 320px screen and the five admin
+      // tabs past a 390px one, which scrolled the whole document sideways.
+      "inline-flex h-auto min-h-10 max-w-full flex-wrap items-center justify-start gap-1 rounded-md bg-muted p-1 text-muted-foreground",
       className,
     )}
     {...props}

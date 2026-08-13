@@ -169,7 +169,10 @@ const Index = () => {
         <DeadlineTicker companies={allOpen} />
       </section>
 
-      <div className="container grid gap-10 py-14 lg:grid-cols-2">
+      {/* grid-cols-1 rather than a bare `grid`: with no column template the
+          implicit track sizes to content, so on a phone it grew to 444px
+          inside a 271px container and took the whole page sideways. */}
+      <div className="container grid grid-cols-1 gap-10 py-14 lg:grid-cols-2">
         <CompanyList
           title="Registration open"
           href="/companies?phase=registration_open"
@@ -235,7 +238,9 @@ function CompanyList({
   renderMeta,
 }: CompanyListProps) {
   return (
-    <section>
+    // min-w-0 so the section cannot push its grid track wider than the page:
+    // a grid item defaults to min-width:auto, which is its min-content width.
+    <section className="min-w-0">
       <div className="mb-4 flex items-baseline justify-between">
         <h2 className="font-display text-xl font-semibold tracking-tight">{title}</h2>
         <Link
@@ -270,12 +275,20 @@ function CompanyList({
         <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card shadow-xs">
           {companies.map((company) => (
             <li key={company.id}>
+              {/* flex-wrap so the deadline and the phase chip drop onto their
+                  own line when they will not fit beside the name. Both are
+                  shrink-0 and together run to ~190px, which leaves nothing for
+                  the company name on a 320px screen. */}
               <Link
                 to={`/companies/${company.id}`}
-                className="group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/40"
+                className="group flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 transition-colors hover:bg-muted/40"
               >
                 <CompanyLogo name={company.name} url={company.logo_url} />
-                <div className="min-w-0 flex-1">
+                {/* A floor rather than min-w-0. With min-w-0 the name column
+                    shrank to nothing to keep the timestamp and phase chip on
+                    one line, so the row rendered as a date with no company
+                    against it. The floor makes the meta wrap instead. */}
+                <div className="min-w-[9rem] flex-1">
                   <p className="truncate text-sm font-medium transition-colors group-hover:text-primary">
                     {company.name}
                   </p>
@@ -283,7 +296,7 @@ function CompanyList({
                     {company.offered_ctc ?? "CTC not disclosed"}
                   </p>
                 </div>
-                <div className="flex shrink-0 items-center gap-3">
+                <div className="flex shrink-0 items-center gap-3 ms-auto">
                   {renderMeta(company)}
                   <PhaseChip phase={resolvePhase(company)} />
                 </div>

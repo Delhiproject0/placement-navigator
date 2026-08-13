@@ -264,7 +264,7 @@ export const CompanyTable = ({
       {/* Mobile: the same rows as cards. An eleven-column table on a phone is
           a horizontal-scroll puzzle, so the four values that actually drive a
           decision get promoted and the rest are dropped. */}
-      <div className="grid gap-3 md:hidden">
+      <div className="grid grid-cols-1 gap-3 md:hidden">
         {companies.map((company) => (
           <button
             key={company.id}
@@ -272,8 +272,12 @@ export const CompanyTable = ({
             onClick={() => open(company.id)}
             className="rounded-lg border border-border bg-card p-4 text-left shadow-xs transition-shadow active:shadow-md"
           >
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-3">
+            {/* The name is the thing you scan for, so it gets a width floor
+                and the phase chip wraps beneath when both will not fit. Held
+                on one line, a 131px chip cut "Wavelength Systems" down to
+                "Wavelength S..." on a 390px screen. */}
+            <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
+              <div className="flex min-w-[11rem] flex-1 items-center gap-3">
                 <CompanyLogo name={company.name} url={company.logo_url} />
                 <div className="min-w-0">
                   <p className="truncate font-medium">
@@ -289,7 +293,7 @@ export const CompanyTable = ({
                   )}
                 </div>
               </div>
-              <PhaseChip phase={resolvePhase(company)} />
+              <PhaseChip phase={resolvePhase(company)} className="ms-auto" />
             </div>
 
             <dl className="mt-4 grid grid-cols-3 gap-3 border-t border-border pt-3">

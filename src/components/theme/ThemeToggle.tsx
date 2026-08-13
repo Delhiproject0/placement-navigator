@@ -43,7 +43,9 @@ export function ThemeToggle({ className }: { className?: string }) {
             title={label}
             onClick={() => setTheme(value)}
             className={cn(
-              "grid h-6 w-6 place-items-center rounded-xs transition-colors duration-120",
+              // 24px segments were below a comfortable touch target on the
+              // tablet widths where this control is visible.
+              "grid h-7 w-7 place-items-center rounded-xs transition-colors duration-120",
               active
                 ? "bg-background text-foreground shadow-xs"
                 : "text-muted-foreground hover:text-foreground",

@@ -74,8 +74,13 @@ export const Header = () => {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/70 bg-background/85 backdrop-blur-md supports-[backdrop-filter]:bg-background/65">
-      <div className="container flex h-16 items-center gap-6">
-        <Link to="/" className="flex shrink-0 items-center gap-2.5">
+      {/* The gap tightens as the bar fills up. At 320px the logo, the season
+          select and the menu button alone exceeded the container with gap-6. */}
+      <div className="container flex h-16 items-center gap-3 lg:gap-6">
+        {/* min-w-0 rather than shrink-0: the mark is pinned, but the wordmark
+            may give way. On a 320px screen the logo, the season select, the
+            avatar and the menu button came to 330px in a 271px bar. */}
+        <Link to="/" className="flex min-w-0 items-center gap-2.5">
           {/* The ADK DEV mark, cropped from the brand artwork rather than
               redrawn, so it stays identical to the portfolio. Two files rather
               than one recoloured SVG: the brand purple is too dark to read on
@@ -85,19 +90,26 @@ export const Header = () => {
             alt=""
             width={28}
             height={28}
-            className="h-7 w-7 dark:hidden"
+            className="h-7 w-7 shrink-0 dark:hidden"
           />
           <img
             src="/adk-mark-light.png"
             alt=""
             width={28}
             height={28}
-            className="hidden h-7 w-7 dark:block"
+            className="hidden h-7 w-7 shrink-0 dark:block"
           />
-          <span className="font-display text-lg font-semibold tracking-tight">PlaceTrack</span>
+          {/* Below 380px the mark alone carries the brand - the wordmark is
+              89px the bar cannot spare once a signed-in avatar is present. */}
+          <span className="hidden truncate font-display text-lg font-semibold tracking-tight min-[380px]:inline">
+            PlaceTrack
+          </span>
         </Link>
 
-        <nav className="hidden items-center gap-7 md:flex">
+        {/* Inline nav only from lg. At md the bar was 19px too wide signed out
+            and 46px too wide as an admin, because that role adds two more
+            links - tablet portrait gets the sheet instead. */}
+        <nav className="hidden items-center gap-5 lg:flex xl:gap-7">
           {visibleItems.map((item) => (
             <NavLink key={item.to} to={item.to} className={linkClass}>
               {item.label}
@@ -189,7 +201,7 @@ export const Header = () => {
               sat inline and overflowed on a phone. */}
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" className="md:hidden" aria-label="Open menu">
+              <Button variant="ghost" size="icon" className="lg:hidden" aria-label="Open menu">
                 <Menu className="h-5 w-5" />
               </Button>
             </SheetTrigger>
