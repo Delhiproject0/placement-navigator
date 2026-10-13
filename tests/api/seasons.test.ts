@@ -28,7 +28,12 @@ if (!stackUp) {
   console.warn(`\n  Skipping season API tests: no stack at ${API}.\n`);
 }
 
-async function api(path: string, init: RequestInit = {}, token?: string) {
+/**
+ * `token` defaults to the seeded student. Nothing on this API is readable
+ * without an approved account any more, and this file is about season scoping,
+ * not about the gate - tests/api/auth.test.ts covers who gets refused.
+ */
+async function api(path: string, init: RequestInit = {}, token: string | undefined = readerToken) {
   const headers = new Headers(init.headers);
   if (!headers.has("content-type") && init.body) headers.set("content-type", "application/json");
   if (token) headers.set("authorization", `Bearer ${token}`);
@@ -50,6 +55,10 @@ async function login(email: string) {
   });
   return (body as unknown as { access_token: string }).access_token;
 }
+
+/** Declared with `let` because `api` closes over it and `login` calls `api`. */
+let readerToken: string | undefined;
+if (stackUp) readerToken = await login("student@iiit.ac.in");
 
 interface SeasonRow {
   id: string;

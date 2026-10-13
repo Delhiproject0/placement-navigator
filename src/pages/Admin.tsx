@@ -1,3 +1,10 @@
+/**
+ * Admin surface: users and roles, plus the moderation, seasons, settings and
+ * audit panels as tabs.
+ *
+ * Guarded by `ProtectedRoute requireAdmin`, but that is only what stops the page
+ * mounting. Every action here is re-authorized by the edge function.
+ */
 import { useState } from "react";
 import { Building2, FileText, MessageSquareText, Search, Shield, Trash, Users } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
@@ -33,6 +40,7 @@ import {
   useAdminStats,
   useAdminUsers,
   useDeleteUser,
+  useSetUserAccess,
   useSetUserActive,
   useSetUserRole,
 } from "@/hooks/queries";
@@ -46,11 +54,13 @@ const Admin = () => {
   const { season } = useSeason();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [pendingOnly, setPendingOnly] = useState(false);
 
-  const usersQuery = useAdminUsers(search, page, isAdmin);
+  const usersQuery = useAdminUsers(search, page, pendingOnly, isAdmin);
   const statsQuery = useAdminStats(isAdmin);
   const setRole = useSetUserRole();
   const setActive = useSetUserActive();
+  const setAccess = useSetUserAccess();
   const deleteUser = useDeleteUser();
 
   // Gate on `loading` first. Without it an admin sees "Access denied" flash on
@@ -95,11 +105,23 @@ const Admin = () => {
       <div className="container py-8 md:py-10">
         <div className="mb-7">
           <h1 className="font-display text-3xl font-semibold tracking-tight">Admin</h1>
-          <p className="mt-1.5 text-sm text-muted-foreground">Manage accounts, roles and access.</p>
+          <p className="mt-1.5 text-sm text-muted-foreground">
+            Manage accounts, roles and access. Nobody can see the site until you grant them access
+            here.
+          </p>
         </div>
 
         <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard icon={Users} label="Accounts" value={statsQuery.data?.users} />
+          <StatCard
+            icon={Users}
+            label="Accounts"
+            value={statsQuery.data?.users}
+            hint={
+              statsQuery.data?.pending_access
+                ? `${statsQuery.data.pending_access} waiting for access`
+                : undefined
+            }
+          />
           <StatCard
             icon={Building2}
             label="Companies"
@@ -134,6 +156,20 @@ const Admin = () => {
                 {total}
               </span>
             </CardTitle>
+            <div className="flex w-full max-w-md items-center justify-end gap-4">
+              {/* The approval queue. New signups arrive with access off, so
+                  this is the list an admin actually needs to work through. */}
+              <label className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+                <Switch
+                  checked={pendingOnly}
+                  onCheckedChange={(checked) => {
+                    setPendingOnly(checked);
+                    setPage(1);
+                  }}
+                  aria-label="Show only accounts waiting for access"
+                />
+                Waiting only
+              </label>
             <div className="relative w-full max-w-xs">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -149,6 +185,7 @@ const Admin = () => {
                 aria-label="Search users"
               />
             </div>
+            </div>
           </CardHeader>
 
           <CardContent>
@@ -161,8 +198,16 @@ const Admin = () => {
             ) : users.length === 0 ? (
               <EmptyState
                 variant="search"
-                title={search ? "No matching users" : "No accounts yet"}
-                description={search ? "Try a different search term." : undefined}
+                title={
+                  search ? "No matching users" : pendingOnly ? "Nobody is waiting" : "No accounts yet"
+                }
+                description={
+                  search
+                    ? "Try a different search term."
+                    : pendingOnly
+                      ? "Every account has been given access."
+                      : undefined
+                }
               />
             ) : (
               <div className="overflow-x-auto">
@@ -171,6 +216,7 @@ const Admin = () => {
                     <TableRow className="hover:bg-transparent">
                       <TableHead className="text-2xs uppercase tracking-wider">User</TableHead>
                       <TableHead className="text-2xs uppercase tracking-wider">Role</TableHead>
+                      <TableHead className="text-2xs uppercase tracking-wider">Access</TableHead>
                       <TableHead className="text-2xs uppercase tracking-wider">Active</TableHead>
                       <TableHead className="text-2xs uppercase tracking-wider">Last seen</TableHead>
                       <TableHead className="w-10" />
@@ -216,6 +262,27 @@ const Admin = () => {
                                 ))}
                               </SelectContent>
                             </Select>
+                          </TableCell>
+
+                          <TableCell>
+                            {/* An admin is let in by the role itself, so the
+                                switch would be a lie - the API refuses to turn
+                                it off, and says to change the role first. */}
+                            <div className="flex items-center gap-2">
+                              <Switch
+                                checked={row.role === "admin" || row.access_granted}
+                                disabled={row.role === "admin" || setAccess.isPending}
+                                onCheckedChange={(checked) =>
+                                  setAccess.mutate({ userId: row.id, granted: checked })
+                                }
+                                aria-label={`${row.access_granted ? "Withdraw access from" : "Grant access to"} ${row.email}`}
+                              />
+                              {row.role !== "admin" && !row.access_granted && (
+                                <Badge variant="outline" className="text-2xs font-normal">
+                                  waiting
+                                </Badge>
+                              )}
+                            </div>
                           </TableCell>
 
                           <TableCell>

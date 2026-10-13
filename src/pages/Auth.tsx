@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { z } from "zod";
@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { api, ApiError } from "@/lib/api";
 import { signInSchema, signUpSchema } from "@/lib/schemas";
-import { Layout } from "@/components/layout/Layout";
+import { GateShell } from "@/components/layout/GateShell";
 import { Seo } from "@/components/Seo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,15 +23,29 @@ type SignUpValues = z.infer<typeof signUpSchema>;
 const Auth = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, loading, signIn, signUp } = useAuth();
+
+  // Where the route guard caught them, so signing in lands on the page they
+  // asked for. Only ever a same-site path: it is written by ProtectedRoute,
+  // and anything not starting with a single slash is ignored.
+  const from = (location.state as { from?: string } | null)?.from;
+  const destination = from && from.startsWith("/") && !from.startsWith("//") ? from : "/";
 
   const [mode, setMode] = useState<Mode>(searchParams.get("mode") === "signup" ? "signup" : "signin");
   const [showPassword, setShowPassword] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
+  // The one place that leaves this page, for both "already signed in" and
+  // "just signed in". The submit handlers used to navigate as well, which was
+  // harmless while "/" was open to everyone. Now the destination is guarded,
+  // and for an unapproved account the guard redirects again - the handler's
+  // second navigate landed in the same tick as that redirect and overwrote it,
+  // leaving the guard mounted at a URL it had already bounced from: a blank
+  // page instead of the access notice.
   useEffect(() => {
-    if (!loading && user) navigate("/", { replace: true });
-  }, [user, loading, navigate]);
+    if (!loading && user) navigate(destination, { replace: true });
+  }, [user, loading, navigate, destination]);
 
   const signInForm = useForm<SignInValues>({
     resolver: zodResolver(signInSchema),
@@ -66,9 +80,10 @@ const Auth = () => {
   const onSignIn = signInForm.handleSubmit(async (values) => {
     setFormError(null);
     try {
-      await signIn(values.email, values.password);
-      toast.success("Welcome back");
-      navigate("/", { replace: true });
+      const account = await signIn(values.email, values.password);
+      // Not for an account still waiting on approval: "Welcome back" above a
+      // page that says they are not authorised reads as a bug.
+      if (account.access_granted) toast.success("Welcome back");
     } catch (error) {
       handleFailure(error);
     }
@@ -78,8 +93,9 @@ const Auth = () => {
     setFormError(null);
     try {
       await signUp(values.email, values.password, values.full_name);
-      toast.success("Account created");
-      navigate("/", { replace: true });
+      // A new account has no access until an admin grants it, so the guard
+      // takes them to the notice that says so.
+      toast.success("Account created. An admin needs to approve it before you can get in.");
     } catch (error) {
       handleFailure(error);
     }
@@ -106,17 +122,14 @@ const Auth = () => {
     mode === "signin" ? "Welcome back" : mode === "signup" ? "Create an account" : "Reset password";
   const subheading =
     mode === "signin"
-      ? "Sign in to contribute experiences and track your applications."
+      ? "An internal portal for IIIT Hyderabad students. Sign in to continue."
       : mode === "signup"
-        ? "Anyone with an account can share interview experiences."
+        ? "For IIIT Hyderabad students. An admin approves each account before it can see anything."
         : "We will send a reset link to your registered address.";
 
   return (
-    <Layout withFooter={false}>
-      <Seo
-        title="Sign in"
-        description="Sign in to contribute interview experiences and track your applications."
-      />
+    <GateShell>
+      <Seo title="Sign in" description="Sign in to PlaceTrack." noIndex />
       {/* overflow-hidden because the decorative glow below is 320px wide and
           centred, so on a 320px screen it hung 4px off the right edge and gave
           the page a horizontal scrollbar. */}
@@ -249,15 +262,9 @@ const Auth = () => {
               </p>
             )}
           </div>
-
-          <p className="mt-5 text-center text-xs text-muted-foreground">
-            <Link to="/companies" className="underline-offset-4 hover:underline">
-              Browse companies without an account
-            </Link>
-          </p>
         </div>
       </div>
-    </Layout>
+    </GateShell>
   );
 };
 

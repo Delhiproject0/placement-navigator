@@ -1,3 +1,10 @@
+/**
+ * Admin settings: who may sign up, and the announcement banner.
+ *
+ * The domain allowlist is stored in `app_settings` and enforced by a Postgres
+ * trigger, so switching it off here does not leave a window where the check is
+ * only in the UI.
+ */
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";

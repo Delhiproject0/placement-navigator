@@ -1,3 +1,4 @@
+/** Display labels for the application stages, kept out of the components. */
 import type { ApplicationStage } from "@/lib/api";
 
 export const STAGE_LABELS: Record<ApplicationStage, string> = {

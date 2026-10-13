@@ -1,3 +1,4 @@
+/** Entry point: fonts, then the app. */
 import { createRoot } from "react-dom/client";
 
 // Self-hosted variable fonts. Importing the variable-weight files means one

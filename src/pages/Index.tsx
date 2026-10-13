@@ -1,3 +1,11 @@
+/**
+ * Landing page: headline numbers, the drives that are open right now, and the
+ * most recently added companies.
+ *
+ * The statistics are derived in the browser from the same company list the rest
+ * of the app already has cached, rather than from a separate aggregate endpoint.
+ * One request, and the numbers cannot disagree with the table below them.
+ */
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useCompanies } from "@/hooks/queries";

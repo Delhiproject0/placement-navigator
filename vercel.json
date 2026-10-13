@@ -4,5 +4,14 @@
       "source": "/:path((?!.*\\..*).*)",
       "destination": "/index.html"
     }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow, noarchive" },
+        { "key": "Referrer-Policy", "value": "same-origin" }
+      ]
+    }
   ]
 }

@@ -1,3 +1,7 @@
+/**
+ * Error normalisation. Covers the shapes that are not `Error` instances, which
+ * is most of what a fetch-based API layer actually throws.
+ */
 import { describe, expect, it } from "vitest";
 import { errorCode, errorMessage, isAuthError } from "@/lib/errors";
 

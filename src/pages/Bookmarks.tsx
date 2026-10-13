@@ -1,3 +1,4 @@
+/** The companies this user has saved. */
 import { Link } from "react-router-dom";
 import { BookmarkX } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";

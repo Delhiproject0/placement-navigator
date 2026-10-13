@@ -14,10 +14,11 @@ jobs:
   web:
     name: Lint, typecheck, test, build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -38,11 +39,19 @@ jobs:
           VITE_SUPABASE_URL: https://ci.supabase.co
           VITE_SUPABASE_ANON_KEY: ci-anon-key
 
+      # The light README is generated; an edit to README.md without regenerating
+      # would split the pair silently.
+      - name: The light README matches its source
+        run: |
+          node scripts/build-light-readme.mjs
+          git diff --exit-code README-light.md
+
   functions:
     name: Typecheck edge functions
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: denoland/setup-deno@v2
         with:
@@ -54,3 +63,77 @@ jobs:
       # package.json, switches to manual node_modules resolution, and dies on
       # supabase-js's transitive npm dependencies.
       - run: deno check --config supabase/functions/deno.json supabase/functions/placements/index.ts
+
+  api:
+    name: API tests against a real stack
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Without this job the API tests never run anywhere. They skip themselves
+      # when no stack is listening, which is right for `npm test` on a laptop
+      # with no Docker - but it meant 63 tests, covering the authorization
+      # checks that stand in for row-level security, had never executed in CI.
+      - name: Start Supabase
+        run: npx supabase start
+
+      # Two secrets, both throwaway, for a stack that is destroyed minutes later.
+      #
+      # PLACEMENTS_JWT_SECRET: the function refuses to boot without it, which is
+      # the point of the guard in context.ts.
+      #
+      # SELFHOST_JWT_SECRET: handleUpload returns STORAGE_NOT_CONFIGURED before
+      # any other check when it is missing, so without it every upload test gets
+      # a 500 instead of the rejection it is asserting. Nothing here ever reaches
+      # the storage box: every assertion in tests/api/uploads.test.ts is on a
+      # check that returns before the outbound request.
+      - name: Secrets for the local stack
+        run: |
+          mkdir -p supabase/functions
+          cat > supabase/functions/.env <<'ENV'
+          PLACEMENTS_JWT_SECRET=ci-only-not-a-real-secret-0123456789abcdef
+          SELFHOST_JWT_SECRET=ci-only-never-reaches-a-storage-box-0123456789
+          ENV
+
+      - name: Serve the edge function
+        run: |
+          npx supabase functions serve --env-file supabase/functions/.env > functions.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:54321/functions/v1/placements/health > /dev/null 2>&1; then
+              echo "function healthy after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "edge function did not become healthy"
+          cat functions.log
+          exit 1
+
+      # tests/api only: the unit tests already ran in the web job, and running
+      # them twice would just make a failure ambiguous.
+      #
+      # The health check is repeated here rather than trusted from the step
+      # above, because these tests skip themselves when the stack is unreachable
+      # and a skipped run exits 0. If the function died in between, this job
+      # would otherwise go green having tested nothing, which is the exact
+      # failure it exists to end.
+      - name: API tests
+        run: |
+          curl -fsS http://127.0.0.1:54321/functions/v1/placements/health > /dev/null
+          npx vitest run tests/api
+
+      - name: Edge function log on failure
+        if: failure()
+        run: cat functions.log || true
+
+      - name: Stop Supabase
+        if: always()
+        run: npx supabase stop --no-backup || true

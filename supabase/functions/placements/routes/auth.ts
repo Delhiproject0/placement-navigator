@@ -25,9 +25,17 @@ interface AppUser {
   full_name: string | null;
   email_verified: boolean;
   created_at: string;
+  access_granted: boolean;
 }
 
-/** Everything the client is allowed to know about an account. */
+/**
+ * Everything the client is allowed to know about an account.
+ *
+ * `access_granted` is here so the app can show the "waiting for approval" page
+ * instead of a wall of failed requests. It mirrors `Caller.hasAccess` - an
+ * admin counts as granted - and it is advice for the UI only: the gate in
+ * index.ts decides, per request, from the database.
+ */
 function publicUser(user: AppUser, role: Role) {
   return {
     id: user.id,
@@ -36,6 +44,7 @@ function publicUser(user: AppUser, role: Role) {
     email_verified: user.email_verified,
     created_at: user.created_at,
     role,
+    access_granted: role === "admin" || user.access_granted === true,
   };
 }
 
@@ -189,7 +198,7 @@ export async function handleRefresh(req: Request): Promise<Response> {
 
   const { data: user } = await db
     .from("app_users")
-    .select("id, email, full_name, email_verified, created_at, is_active")
+    .select("id, email, full_name, email_verified, created_at, is_active, access_granted")
     .eq("id", session.user_id)
     .maybeSingle();
 
@@ -244,7 +253,7 @@ export async function handleMe(caller: Caller): Promise<Response> {
   const [{ data: user }, { data: profile }] = await Promise.all([
     db
       .from("app_users")
-      .select("id, email, full_name, email_verified, created_at")
+      .select("id, email, full_name, email_verified, created_at, access_granted")
       .eq("id", caller.id)
       .maybeSingle(),
     db.from("profiles").select("*").eq("user_id", caller.id).maybeSingle(),

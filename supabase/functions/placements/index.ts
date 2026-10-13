@@ -11,13 +11,25 @@
  * bypasses it. Authorization is the explicit `requireX` check at the top of
  * each route below. A missing check is a data leak, not a bug in a policy.
  *
+ * Nothing here is public. The only routes reachable without an account are the
+ * health probe, the auth endpoints themselves, and the tokenised calendar feed.
+ * Every other route sits below `requireAccess`, which needs an account an admin
+ * has explicitly let in.
+ *
  * Deployed at https://<project>.supabase.co/functions/v1/placements
- * with verify_jwt = false, so unauthenticated routes (login, public reads)
- * are reachable and can return structured errors instead of Kong's bare 401.
+ * with verify_jwt = false, so the auth routes are reachable and everything
+ * else can return a structured error instead of Kong's bare 401.
  */
 
 import { CORS_HEADERS, fail, json } from "./http.ts";
-import { getCaller, requireAdmin, requireEditor, requireUser, type Caller } from "./context.ts";
+import {
+  getCaller,
+  requireAccess,
+  requireAdmin,
+  requireEditor,
+  requireUser,
+  type Caller,
+} from "./context.ts";
 import * as auth from "./routes/auth.ts";
 import * as companies from "./routes/companies.ts";
 import * as contributions from "./routes/contributions.ts";
@@ -60,8 +72,43 @@ Deno.serve(async (req) => {
     if (method === "POST" && path === "/auth/request-reset") return await auth.handleRequestReset(req);
     if (method === "POST" && path === "/auth/reset-password") return await auth.handleResetPassword(req);
 
-    // The placement calendar is public - this is a noticeboard, and requiring
-    // an account to read it would defeat the point.
+    // No Authorization header by design: calendar clients poll a bare URL and
+    // cannot send one, so the token in the path is the credential. It is still
+    // not public - serveCalendar refuses a token whose owner has lost access.
+    if (method === "GET" && segments[0] === "calendar" && segments[1] && segments[1] !== "token") {
+      return await calendar.serveCalendar(segments[1]);
+    }
+
+    // ------------------------------------------------------------ identified
+    const caller: Caller | null = await getCaller(req);
+
+    // The only two things a signed-in account can do before an admin has let
+    // it in: find out that it is waiting, and change its own password.
+    if (method === "GET" && path === "/auth/me") {
+      const denied = requireUser(caller);
+      if (denied) return denied;
+      return await auth.handleMe(caller!);
+    }
+    if (method === "POST" && path === "/auth/change-password") {
+      const denied = requireUser(caller);
+      if (denied) return denied;
+      return await auth.handleChangePassword(req, caller!);
+    }
+
+    // ------------------------------------------------------------- the gate
+    //
+    // Everything below this line is institute-internal. Nothing is public, and
+    // an account alone is not enough: an admin has to have granted access.
+    //
+    // It is one check here rather than one per route so that a route added
+    // later is closed by default. Forgetting a guard used to mean a leak; now
+    // a route has to be deliberately placed above this line to be open.
+    {
+      const denied = requireAccess(caller);
+      if (denied) return denied;
+    }
+
+    // ----------------------------------------------------------------- reads
     if (method === "GET" && path === "/companies") return await companies.listCompanies(url);
 
     if (method === "GET" && segments[0] === "companies" && segments.length === 2) {
@@ -84,15 +131,6 @@ Deno.serve(async (req) => {
     }
     if (method === "GET" && path === "/attachments") return await storage.listAttachments(url);
     if (method === "GET" && path === "/file-text") return await storage.handleFileText(url);
-
-    // Unauthenticated by design: calendar clients poll a bare URL and cannot
-    // send an Authorization header, so the token in the path authenticates it.
-    if (method === "GET" && segments[0] === "calendar" && segments[1] && segments[1] !== "token") {
-      return await calendar.serveCalendar(segments[1]);
-    }
-
-    // ------------------------------------------------------------ identified
-    const caller: Caller | null = await getCaller(req);
 
     if (method === "GET" && path === "/comments") return await discussion.listComments(url, caller);
     if (method === "GET" && path === "/votes") return await discussion.voteSummary(url, caller);
@@ -118,17 +156,6 @@ Deno.serve(async (req) => {
       const denied = requireEditor(caller);
       if (denied) return denied;
       return await discussion.setCompanyTags(req, segments[1], caller!);
-    }
-
-    if (method === "GET" && path === "/auth/me") {
-      const denied = requireUser(caller);
-      if (denied) return denied;
-      return await auth.handleMe(caller!);
-    }
-    if (method === "POST" && path === "/auth/change-password") {
-      const denied = requireUser(caller);
-      if (denied) return denied;
-      return await auth.handleChangePassword(req, caller!);
     }
 
     // ---------------------------------------------------------------- me
@@ -290,6 +317,9 @@ Deno.serve(async (req) => {
         }
         if (method === "PATCH" && segments[3] === "active") {
           return await admin.setUserActive(req, userId, caller!);
+        }
+        if (method === "PATCH" && segments[3] === "access") {
+          return await admin.setUserAccess(req, userId, caller!);
         }
         if (method === "DELETE" && segments.length === 3) {
           return await admin.deleteUser(userId, caller!);

@@ -1,3 +1,7 @@
+/**
+ * Add or edit an interview question. Doubles as both because the fields and the
+ * validation are identical; the presence of `question` decides which.
+ */
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";

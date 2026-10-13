@@ -1,3 +1,8 @@
+/**
+ * 404. Shows the path that missed, offers the three most likely destinations,
+ * and can open the command palette, because a mistyped URL is usually someone
+ * looking for a company by name.
+ */
 import { useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ArrowLeft, Compass, Search } from "lucide-react";

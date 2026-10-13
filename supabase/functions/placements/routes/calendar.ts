@@ -5,6 +5,10 @@
  * header: calendar clients poll a bare URL on their own schedule. The token in
  * the path is therefore the credential, which is why it is 32 random bytes,
  * rotatable, and grants nothing but a read of the placement schedule.
+ *
+ * The schedule is institute-internal, so the token is only as good as the
+ * account behind it: a feed stops the moment its owner is disabled or loses
+ * access, without anyone having to remember to revoke the link.
  */
 
 import { db, type Caller } from "../context.ts";
@@ -47,7 +51,7 @@ export async function revokeCalendarToken(caller: Caller): Promise<Response> {
 }
 
 /**
- * Serves the feed. Unauthenticated by design - the token is the credential.
+ * Serves the feed. No Authorization header - the token is the credential.
  *
  * A wrong token gets a flat 404 with no detail: distinguishing "no such token"
  * from "token exists but something else went wrong" would let someone probe
@@ -68,11 +72,20 @@ export async function serveCalendar(token: string): Promise<Response> {
 
   if (!profile) return new Response("Not found", { status: 404, headers: CORS_HEADERS });
 
-  // The feed covers the whole placement calendar, which is public information
-  // anyway; the token identifies whose subscription it is, not what they may
-  // see. Bookmarked companies are listed first in the description so a
-  // subscriber can tell theirs apart.
-  //
+  // A token outlives the session that minted it, so the owner is checked on
+  // every poll. Without this, a student whose access was revoked would keep
+  // receiving the schedule in their calendar app indefinitely. Same flat 404
+  // as an unknown token: the response must not confirm that a token was once
+  // valid.
+  const [{ data: owner }, { data: ownerRole }] = await Promise.all([
+    db.from("app_users").select("is_active, access_granted").eq("id", profile.user_id).maybeSingle(),
+    db.from("user_roles").select("role").eq("user_id", profile.user_id).maybeSingle(),
+  ]);
+  const ownerHasAccess = ownerRole?.role === "admin" || owner?.access_granted === true;
+  if (!owner?.is_active || !ownerHasAccess) {
+    return new Response("Not found", { status: 404, headers: CORS_HEADERS });
+  }
+
   // Always the *current* season, never a selected one: a subscription is a
   // standing thing, and the point of it is upcoming dates. It follows the
   // rollover on its own, so nobody has to resubscribe each August.
@@ -101,7 +114,8 @@ export async function serveCalendar(token: string): Promise<Response> {
       "Content-Type": "text/calendar; charset=utf-8",
       "Content-Disposition": 'inline; filename="placetrack.ics"',
       // Calendar clients poll aggressively; an hour is a reasonable floor.
-      "Cache-Control": "public, max-age=3600",
+      // `private`, so no shared cache keeps a copy that outlives the token.
+      "Cache-Control": "private, max-age=3600",
     },
   });
 }

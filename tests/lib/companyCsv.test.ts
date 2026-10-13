@@ -1,3 +1,10 @@
+/**
+ * Column sets for company import and export.
+ *
+ * The interesting property is that the two are not the same: derived columns go
+ * out and must not come back in, or a round trip would write a computed value
+ * into the source it was computed from.
+ */
 import { describe, expect, it } from "vitest";
 import {
   buildCompanyCsvTemplate,

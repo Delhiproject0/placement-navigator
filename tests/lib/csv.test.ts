@@ -1,3 +1,7 @@
+/**
+ * CSV reading and writing, including the parts people forget: quoted commas,
+ * embedded newlines, doubled quotes, and nulls that must not become "null".
+ */
 import { describe, expect, it } from "vitest";
 import { parseCsv, parseCsvObjects, toCsv } from "@/lib/csv";
 

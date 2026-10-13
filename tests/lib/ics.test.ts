@@ -1,3 +1,8 @@
+/**
+ * Calendar feed generation. Asserts CRLF line endings, line folding and UTC
+ * timestamps, because a feed that looks right and is rejected by the client is
+ * the failure mode here.
+ */
 import { describe, expect, it } from "vitest";
 import { buildIcs, companyEvents, type CalendarCompany } from "@/lib/ics";
 

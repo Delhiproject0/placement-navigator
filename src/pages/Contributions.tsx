@@ -1,3 +1,9 @@
+/**
+ * Everything this user has written: experiences and questions, split by tab.
+ *
+ * Read-only on purpose. Editing happens on the company's own page, where the
+ * surrounding context makes it obvious which drive a write-up belongs to.
+ */
 import { Link } from "react-router-dom";
 import { Layout } from "@/components/layout/Layout";
 import { Seo } from "@/components/Seo";

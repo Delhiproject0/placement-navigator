@@ -5,6 +5,28 @@ reading the code. For setup and scripts, see [README.md](./README.md).
 
 ---
 
+## Contents
+
+- [Architecture](#architecture)
+- [Frontend structure](#frontend-structure)
+- [Data model](#data-model)
+- [Authentication](#authentication)
+- [Environment](#environment)
+- [File storage](#file-storage)
+- [Authorization model](#authorization-model)
+- [Theming](#theming)
+- [Seed data](#seed-data)
+- [Audit trail](#audit-trail)
+- [Seasons](#seasons)
+- [Discussion and votes](#discussion-and-votes)
+- [Continuous integration](#continuous-integration)
+- [Documentation and screenshots](#documentation-and-screenshots)
+- [Known operational gaps](#known-operational-gaps)
+- [Runbooks](#runbooks)
+- [Contributors](#contributors)
+
+---
+
 ## Architecture
 
 ```
@@ -29,6 +51,72 @@ Edge Function  /functions/v1/placements      <-- the entire API
 Data lives in the hosted Supabase project. Files live on a self-hosted box. The
 two are deliberately separate: file bytes are large, cheap to serve from a VM
 already paid for, and would otherwise burn the project's free-tier storage quota.
+
+## Frontend structure
+
+```
+src/
+  main.tsx            fonts, then mounts App
+  App.tsx             providers (query, theme, auth, season) and the router
+  pages/              one file per route, 12 of them
+  components/
+    layout/           shell, header, sidebar, footer
+    companies/        cards, filters, the phase pill
+    discussion/       comments, votes, tags
+    attachments/      upload widget and file list
+    forms/            react-hook-form + zod bindings
+    charts/           recharts wrappers that read theme tokens
+    admin/            user table, season manager, settings
+    skeletons/        loading placeholders, one per list shape
+    ui/               shadcn primitives, mostly untouched
+  hooks/
+    queries.ts        every server call, as a react-query hook
+    useAuth.tsx       token, current user, role predicates
+    useSeason.tsx     the selected season, persisted per browser
+    useChartColors.ts reads CSS variables so charts follow the theme
+  lib/
+    api.ts            the only module that talks to the edge function
+    schemas.ts        zod schemas shared by forms and parsers
+    phase.ts, ctc.ts, csv.ts, ics.ts   domain helpers
+  types/database.ts   hand-written row types
+```
+
+Two rules hold the shape together:
+
+1. **`lib/api.ts` is the only place a URL appears.** Components never fetch.
+   Everything goes through a react-query hook in `hooks/queries.ts`, which calls
+   `api.ts`, which attaches the bearer token and unwraps the envelope.
+2. **`types/database.ts` is written by hand.** There are no generated Supabase
+   types here, because the browser never touches PostgREST - the edge function's
+   response shape is the contract, not the table shape. When a migration adds a
+   column, update the type and `api.ts` together or the column simply will not
+   arrive.
+
+## Data model
+
+Nineteen tables. The ones worth knowing:
+
+| Table | Holds | Notes |
+| --- | --- | --- |
+| `app_users` | accounts | bcrypt hash via pgcrypto, `is_active` flag, `access_granted` flag |
+| `auth_sessions` | issued sessions | one row per login, revoked on logout |
+| `password_resets` | reset tokens | single use, expiring |
+| `user_roles` | role per user | `admin` / `editor` / `viewer` |
+| `profiles` | display name, batch, branch | 1:1 with `app_users` |
+| `companies` | the central record | phase, CTC breakdown, dates, season |
+| `interview_experiences` | write-ups | authored, editable by author or admin |
+| `interview_questions` | questions per company | round, difficulty, topic |
+| `attachments` | file metadata | bytes live on the storage box, not here |
+| `bookmarks` / `applications` | per-user tracking | applications carry a status |
+| `comments` / `votes` | discussion | votes are unique per (user, target) |
+| `tags` / `company_tags` | free tagging | many-to-many |
+| `seasons` | placement cycles | exactly one `is_current` |
+| `announcements` | the banner | scheduled by window |
+| `app_settings` | single-row config | signup domain allowlist lives here |
+| `audit_log` | who changed what | append only |
+
+Nothing cascades to `audit_log`, deliberately: deleting a company must not erase
+the record that it was deleted.
 
 ## Authentication
 
@@ -102,6 +190,7 @@ access goes through the API, authenticated with a token this project issued.
 
 | Variable | Value |
 |---|---|
+| `PLACEMENTS_JWT_SECRET` | `openssl rand -hex 32`. Signs the access tokens this API issues. **Required**: the function now refuses to boot without it, because an empty value used to reach Web Crypto as a zero-length HMAC key and turn every login into an unexplained 500. Rotating it signs everyone out, which is the intended emergency response. |
 | `SELFHOST_JWT_SECRET` | `JWT_SECRET` from `~/supabase-prod/docker/.env` on the storage box. 64 characters; the same value the portfolio project calls `ADMIN_JWT_SECRET`. A wrong one fails silently until an upload: the box answers `401 Unauthorized: Invalid signature` and the API turns that into a 502. Check it without printing it: `printf %s "$SELFHOST_JWT_SECRET" \| sha256sum` should match the box's. |
 | `ORACLE_UPLOAD_BASE_URL` | `https://supabase.dileepadari.dev` |
 | `ORACLE_UPLOAD_PATH` | `/functions/v1/upload` |
@@ -111,6 +200,24 @@ access goes through the API, authenticated with a token this project issued.
 
 `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are injected into edge functions
 automatically - do not set them yourself.
+
+Serving locally reads none of the above. `supabase functions serve` takes its
+environment from `supabase/functions/.env`, which is gitignored, so a fresh
+checkout needs at least:
+
+```sh
+{
+  echo "PLACEMENTS_JWT_SECRET=$(openssl rand -hex 32)"
+  echo "SELFHOST_JWT_SECRET=$(openssl rand -hex 32)"
+} > supabase/functions/.env
+```
+
+Without `PLACEMENTS_JWT_SECRET` the function will not start at all, and
+`tests/api` will skip itself because nothing answers `/health`. Without
+`SELFHOST_JWT_SECRET`, `handleUpload` returns `STORAGE_NOT_CONFIGURED` before any
+other check, so every upload path 500s. Neither local value needs to be real:
+uploads that would actually reach the storage box are verified by hand against
+production, not from a laptop. CI writes throwaways for both.
 
 ### GitHub Actions secrets
 
@@ -179,24 +286,139 @@ curl -s https://supabase.dileepadari.dev/functions/v1/hello
 
 ## Authorization model
 
+### The access gate
+
+The site is internal to IIIT Hyderabad. **Nothing is public, and an account is
+not enough**: an admin grants access per account, stored as
+`app_users.access_granted`. A new signup has it off.
+
+| Caller | What they reach |
+|---|---|
+| No session | `/health`, the `/auth/*` endpoints, and nothing else (401) |
+| Signed in, not approved | additionally `/auth/me` and `/auth/change-password`; everything else is 403 `ACCESS_PENDING` |
+| Signed in and approved | the role table below |
+
+The pieces, and why each is the way it is:
+
+- **One gate, not one per route.** `index.ts` calls `requireAccess` once, after
+  the handful of open routes and before everything else. A route added later is
+  closed unless someone deliberately puts it above that line. The per-route
+  `requireUser` calls further down are now redundant and left in place.
+- **Read per request.** `getCaller` re-reads the flag from the database every
+  time, like the role, so withdrawing access bites on the next request rather
+  than when the hour-long token expires. No session revocation is needed.
+- **403, not 401.** The client discards its tokens on any 401. A waiting student
+  would be signed out on every page load and never see why.
+- **Admins are let in by their role.** The first admin is made by hand in SQL;
+  a flag they forgot to set on themselves would lock out the only person who
+  can grant it. The API refuses to "withdraw" an admin's access for the same
+  reason. Promoting someone to editor or admin grants access too.
+- **`is_active` is a different thing.** Off means the account cannot sign in at
+  all. `access_granted` off means it can sign in and is told it is waiting.
+- **The calendar feed is checked too.** Its URL is a bearer credential living in
+  a calendar app, so `serveCalendar` looks up the token's owner on every poll
+  and 404s once they are disabled or unapproved.
+- **The anon key reaches no table.** It ships in the bundle, and the baseline
+  had granted it `select` on companies, experiences, questions, comments, tags,
+  seasons, announcements and attachments. The gate in the function meant nothing
+  while `/rest/v1/companies` answered that key, so the access-gate migration
+  drops those policies and revokes every table grant from `anon` and
+  `authenticated`. The one thing left to the anon key is `keepalive()`, which
+  returns `true` for the scheduled ping.
+- **Grants are audited by hand.** `setUserAccess` writes its own `audit_log`
+  row holding only the flag. The generic trigger records the whole row, and the
+  whole row of `app_users` includes the password hash.
+
+In the browser, every route except `/auth` and `/no-access` is wrapped in
+`ProtectedRoute`: no session goes to `/auth`, a session without access goes to
+`/no-access`. Those two pages use `GateShell` rather than `Layout`, because the
+real shell links to and fetches things the visitor may not have. That is the
+polite half; the gate above is the half that counts.
+
+**What the gate does not cover: uploaded files.** Attachments are served by
+Caddy from `mystorage.dileepadari.dev` at plain public URLs, with no check of
+any kind. The API no longer hands those URLs to anyone unapproved, and the
+filenames carry a random UUID, but a URL that has been copied out works for
+anyone who has it. Closing that needs a change on the storage box (signed URLs,
+or serving through an authenticated proxy), not in this repository.
+
+### Roles
+
 Three roles in the `app_role` enum: `admin`, `editor`, `viewer`. A user's role is
-a row in `user_roles`; there is no email-domain rule.
+a row in `user_roles`; there is no email-domain rule. Every row below assumes
+the account has been granted access.
 
 | | viewer | editor | admin |
 |---|---|---|---|
-| Read companies, experiences, questions | yes (so can anonymous) | yes | yes |
+| Read companies, experiences, questions | yes | yes | yes |
 | Contribute an experience or question | yes | yes | yes |
 | Edit/delete **own** contribution | yes | yes | yes |
 | Edit/delete **anyone's** contribution | no | yes | yes |
 | Create/edit a company | no | yes | yes |
 | Delete a company | no | no | yes |
 | Manage users and roles | no | no | yes |
+| Grant or withdraw access | no | no | yes |
 
-`useAuth()` exposes `isAdmin` / `isEditor` / `canEdit` for **UI affordances only**.
+`useAuth()` exposes `hasAccess` / `isAdmin` / `isEditor` / `canEdit` for **UI affordances only**.
 Hiding a button is not authorization - the check that matters is the one in the
 edge function route.
 
+Which is why `tests/api` matters more than its line count suggests. Those 73 tests
+exercise the function's authorization directly - one student cannot attach a file
+to another's write-up, a viewer cannot edit someone else's contribution - and they
+run against a real Postgres, not a mock, because the interesting failures are at
+the boundary (grants, composite nulls, bcrypt). They skip themselves when no local
+stack is listening, which is right for `npm test` on a laptop with no Docker and
+was wrong for CI: **until the `api` job existed, none of them had ever run there.**
+
 ---
+
+## Theming
+
+Tokens are HSL triples in `src/index.css`: a `:root` block for light, a `.dark`
+block for dark, and Tailwind reads them through `hsl(var(--token))` in
+`tailwind.config.ts`. The palette is warm paper and oxide rather than shadcn's
+default slate, because the app is read mostly as dense tables and a cool
+near-black ground makes them look like an untouched scaffold.
+
+Three token families beyond the shadcn set:
+
+- `--phase-*`, one colour per placement phase, so the pill on a company card and
+  the segment in a chart cannot drift apart.
+- `--chart-1` through `--chart-6`, read at runtime by `useChartColors()` because
+  Recharts wants real colour strings and cannot resolve a CSS variable.
+- `--sidebar-*`, so the shell can differ from the page ground in dark mode.
+
+`ThemeProvider` is `next-themes` in class mode, keyed `placetrack-theme`, default
+`system`, with `disableTransitionOnChange` so the flip does not animate every
+colour-transitioned element on the page at once (which reads as a rendering fault
+rather than a deliberate change). The dark palette is written and validated
+separately, not derived by inverting the light one.
+
+A `prefers-reduced-motion` block collapses every duration to 0.01ms rather than
+removing animations, which keeps layout that depends on a transition ending
+intact.
+
+## Seed data
+
+`supabase/seed.sql` runs on every `supabase db reset` and is what the local stack,
+the API tests, and the screenshots all share. It creates four accounts through
+`app_signup()` (admin, editor, student and pending, all with the password
+`placement123`, so the hashes are real bcrypt output rather than pasted
+literals; the first three are granted access and `pending` is left waiting, so
+the `/no-access` page is reachable locally), three seasons with
+`2025-26` current, one company per phase so every branch of `resolvePhase()` has a
+row, and a handful of experiences and questions.
+
+Two shapes in it are deliberate and should survive any edit:
+
+- **CTC is messy free text.** `11 LPA` sits next to `INR 34,05,000` because both
+  forms occur live, and `lib/ctc.ts` has to parse both.
+- **Several companies have no dates at all**, because 22 of the 59 live rows are
+  in that state and code that only ever sees fully-populated rows breaks the first
+  time it meets one.
+
+It must never be applied to the hosted project.
 
 ## Audit trail
 
@@ -286,14 +508,48 @@ Vote scores are summed on read rather than kept in a counter column. A counter
 drifts the first time a delete or a rollback misses it, and there is no point
 at which a wrong count announces itself.
 
+## Continuous integration
+
+`.github/workflows/ci.yml`, three jobs:
+
+- **web** - lint, typecheck, unit tests, the production build, and a check that
+  `README-light.md` still matches `README.md`.
+- **functions** - `deno check` over the edge function, with `--config` pointing at
+  `supabase/functions/deno.json` (without it Deno finds the frontend's
+  `package.json` and dies on supabase-js's transitive npm dependencies).
+- **api** - `supabase start`, serve the function, poll `/health`, then run
+  `tests/api`. Every job is time-bounded.
+
+`ping.yaml` is separate: a scheduled request that keeps the free-tier Supabase
+project from pausing.
+
+## Documentation and screenshots
+
+`README.md` is the dark-mode page and `README-light.md` its light twin, generated
+by `scripts/build-light-readme.mjs` and checked by CI.
+
+Screenshots live under `docs/screenshots/{dark,light}` and
+`docs/screenshots/responsive/{dark,light}`, one file per screen with the same name
+in both themes. They are real viewport renders against a **local** Supabase stack
+seeded from `supabase/seed.sql` - never the live project - signed in through the
+app's own login form as the seeded student account.
+
+---
+
 ## Known operational gaps
 
 - **No SMTP is configured.** Supabase's built-in mailer is limited to project
   members at 2 emails/hour, so password reset and email confirmation will not
   deliver to students until a real provider (Resend, Brevo, SES) is wired into
   Auth → SMTP Settings. The UI is built and will start working the moment it is.
-- **Signup is open to any email address.** Restricting to IIIT-H domains is
-  controlled by `app_settings.signup_allowed_domains`, enforced by a trigger.
+- **Signup is open to any email address**, though an account now opens nothing
+  until an admin approves it. Restricting who can even create one to IIIT-H
+  domains is controlled by `app_settings.signup_allowed_domains`.
+- **Nobody is told when an account is waiting.** With no SMTP there is no email
+  to admins on signup or to the student on approval; admins find the queue
+  under Admin, Users, "Waiting only".
+- **Uploaded files are not behind the access gate.** See the note at the end of
+  [the access gate](#the-access-gate).
 - **The project ref changed.** `supabase/config.toml` previously pointed at
   `faynpnofvegarourkykh`, which no longer exists (NXDOMAIN). The live ref is
   `jwaqisnpxkavkkjzvutl`. If something references the old ref, it is stale.
@@ -337,3 +593,12 @@ Changing `JWT_SECRET` on the box invalidates PostgREST tokens for **every** app 
 it. If you must: update `~/supabase-prod/docker/.env`, restart the whole stack,
 then `npx supabase secrets set SELFHOST_JWT_SECRET=...` in every project that
 uploads (placements, workos, portfolio).
+
+---
+
+## Contributors
+
+| | | |
+| --- | --- | --- |
+| [Dileep Adari](https://github.com/Dileepadari) | author and maintainer | the application, the API, the schema |
+| [Delhiproject0](https://github.com/Delhiproject0) | upstream owner | holds the upstream repository and merges releases |

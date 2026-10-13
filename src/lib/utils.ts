@@ -1,3 +1,11 @@
+/**
+ * Class-name merging and the display status of a company.
+ *
+ * The stored `status` column and the status a person sees are different
+ * vocabularies, and `computePlacementStatus()` is the only place that maps one
+ * to the other. Everything downstream, the phase pill and the charts included,
+ * reads its result rather than the column.
+ */
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 

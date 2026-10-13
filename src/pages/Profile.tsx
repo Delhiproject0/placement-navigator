@@ -1,3 +1,7 @@
+/**
+ * Account page: profile details, password change, resume attachments and the
+ * calendar subscription link.
+ */
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";

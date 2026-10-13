@@ -15,7 +15,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { SeasonSelect } from "@/components/SeasonSelect";
-import { BarChart3, BookMarked, CalendarDays, LayoutGrid, LogOut, Menu, Search, Shield, User as UserIcon } from "lucide-react";
+import { BarChart3, BookMarked, CalendarDays, ClipboardList, LayoutGrid, LogOut, Menu, PenLine, Search, Shield, User as UserIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface NavItem {
@@ -177,6 +177,21 @@ export const Header = () => {
                   <Link to="/me/bookmarks">
                     <BookMarked className="mr-2 h-4 w-4" />
                     Saved companies
+                  </Link>
+                </DropdownMenuItem>
+                {/* Applications and Contributions were routed but linked from
+                    nowhere in the header, so the only way to either page was to
+                    type the URL. */}
+                <DropdownMenuItem asChild>
+                  <Link to="/me/applications">
+                    <ClipboardList className="mr-2 h-4 w-4" />
+                    Applications
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link to="/me/contributions">
+                    <PenLine className="mr-2 h-4 w-4" />
+                    Your contributions
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />

@@ -1,3 +1,11 @@
+/**
+ * Row and payload shapes, written by hand.
+ *
+ * Not generated: the browser never touches PostgREST, so the contract is the
+ * edge function's response shape rather than the table definition. A migration
+ * that adds a column has to be reflected here and in `lib/api.ts` or the value
+ * simply never arrives.
+ */
 export type PlacementStatus =
   | "upcoming"
   | "ongoing"

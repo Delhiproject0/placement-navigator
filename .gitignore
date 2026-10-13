@@ -49,3 +49,6 @@ supabase/backups/*.sql
 # here (or installing it) drops a lockfile that has nothing to do with the
 # edge functions, whose own lock lives in supabase/functions/.
 /deno.lock
+
+# The scaffold left a bun lockfile behind. This project installs with npm.
+bun.lockb

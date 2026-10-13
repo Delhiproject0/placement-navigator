@@ -24,6 +24,11 @@ export interface ApiUser {
   email_verified: boolean;
   created_at: string;
   role: "admin" | "editor" | "viewer";
+  /**
+   * Whether an admin has let this account into the site. False for every new
+   * signup. Advice for the UI only - the API re-checks it on each request.
+   */
+  access_granted: boolean;
 }
 
 export interface Session {
@@ -78,6 +83,21 @@ export function onSessionChange(listener: Listener): () => void {
 
 function emit(user: ApiUser | null) {
   for (const listener of listeners) listener(user);
+}
+
+const accessListeners = new Set<() => void>();
+
+/**
+ * Fires when the API refuses a request with ACCESS_PENDING.
+ *
+ * Access can be withdrawn while someone has the app open. Their cached user
+ * still says they are let in, so without this every page would sit there
+ * showing failed requests instead of sending them to the page that explains
+ * what happened.
+ */
+export function onAccessRevoked(listener: () => void): () => void {
+  accessListeners.add(listener);
+  return () => accessListeners.delete(listener);
 }
 
 export const tokens = {
@@ -212,6 +232,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   if (!response.ok) {
     const error = await toApiError(response);
     if (error.status === 401) clearSession();
+    if (error.code === "ACCESS_PENDING") for (const listener of accessListeners) listener();
     throw error;
   }
 
@@ -300,6 +321,8 @@ export interface AdminStats {
   experiences: number;
   questions: number;
   users: number;
+  /** Accounts waiting for an admin to let them in. */
+  pending_access: number;
   seasons: number;
   /** Companies in the season being viewed. Null when no season resolved. */
   season_companies: number | null;
@@ -396,6 +419,8 @@ export interface AdminUser {
   email: string;
   full_name: string | null;
   is_active: boolean;
+  access_granted: boolean;
+  access_granted_at: string | null;
   email_verified: boolean;
   last_login_at: string | null;
   created_at: string;
@@ -437,7 +462,7 @@ export const api = {
   },
 
   seasons: {
-    list: () => request<{ seasons: Season[] }>("/seasons", { auth: false }).then((r) => r.seasons),
+    list: () => request<{ seasons: Season[] }>("/seasons").then((r) => r.seasons),
     create: (input: { slug: string; label?: string; make_current?: boolean }) =>
       request<{ season: Season }>("/admin/seasons", { method: "POST", body: input }),
     setCurrent: (slug: string) =>
@@ -457,18 +482,14 @@ export const api = {
       if (query) params.set("q", query);
       if (season) params.set("season", season);
       const suffix = params.toString();
-      return request<{ companies: Company[] }>(`/companies${suffix ? `?${suffix}` : ""}`, {
-        auth: false,
-      }).then((response) => response.companies);
+      return request<{ companies: Company[] }>(`/companies${suffix ? `?${suffix}` : ""}`).then((response) => response.companies);
     },
 
     history: (id: string) =>
-      request<{ org_slug: string; history: CompanyHistoryEntry[] }>(`/companies/${id}/history`, {
-        auth: false,
-      }),
+      request<{ org_slug: string; history: CompanyHistoryEntry[] }>(`/companies/${id}/history`),
 
     get: (id: string) =>
-      request<{ company: Company }>(`/companies/${id}`, { auth: false }).then((r) => r.company),
+      request<{ company: Company }>(`/companies/${id}`).then((r) => r.company),
 
     /**
      * `season` decides which year the new drive belongs to. It is the season
@@ -496,9 +517,7 @@ export const api = {
 
   experiences: {
     listForCompany: (companyId: string) =>
-      request<{ items: ExperienceWithAuthor[] }>(`/companies/${companyId}/experiences`, {
-        auth: false,
-      }).then((r) => r.items),
+      request<{ items: ExperienceWithAuthor[] }>(`/companies/${companyId}/experiences`).then((r) => r.items),
 
     create: (input: Partial<InterviewExperience> & { company_id: string }) =>
       request<{ item: InterviewExperience }>("/experiences", { method: "POST", body: input }),
@@ -511,9 +530,7 @@ export const api = {
 
   questions: {
     listForCompany: (companyId: string) =>
-      request<{ items: QuestionWithAuthor[] }>(`/companies/${companyId}/questions`, {
-        auth: false,
-      }).then((r) => r.items),
+      request<{ items: QuestionWithAuthor[] }>(`/companies/${companyId}/questions`).then((r) => r.items),
 
     create: (input: Partial<InterviewQuestion> & { company_id: string }) =>
       request<{ item: InterviewQuestion }>("/questions", { method: "POST", body: input }),
@@ -578,7 +595,6 @@ export const api = {
     list: (entityType: string, entityId: string) =>
       request<{ attachments: Attachment[] }>(
         `/attachments?entity_type=${entityType}&entity_id=${entityId}`,
-        { auth: false },
       ).then((r) => r.attachments),
 
     remove: (id: string) =>
@@ -619,16 +635,16 @@ export const api = {
   },
 
   tags: {
-    list: () => request<{ tags: Tag[] }>("/tags", { auth: false }).then((r) => r.tags),
+    list: () => request<{ tags: Tag[] }>("/tags").then((r) => r.tags),
     forCompany: (companyId: string) =>
-      request<{ tags: Tag[] }>(`/companies/${companyId}/tags`, { auth: false }).then((r) => r.tags),
+      request<{ tags: Tag[] }>(`/companies/${companyId}/tags`).then((r) => r.tags),
     setForCompany: (companyId: string, tags: string[]) =>
       request<{ success: boolean }>(`/companies/${companyId}/tags`, { method: "PUT", body: { tags } }),
   },
 
   announcements: {
     live: () =>
-      request<{ announcements: Announcement[] }>("/announcements", { auth: false }).then(
+      request<{ announcements: Announcement[] }>("/announcements").then(
         (r) => r.announcements,
       ),
     listAll: () =>
@@ -689,9 +705,10 @@ export const api = {
   },
 
   admin: {
-    users: (params: { q?: string; page?: number } = {}) => {
+    users: (params: { q?: string; page?: number; pendingOnly?: boolean } = {}) => {
       const search = new URLSearchParams();
       if (params.q) search.set("q", params.q);
+      if (params.pendingOnly) search.set("access", "pending");
       if (params.page) search.set("page", String(params.page));
       const suffix = search.toString();
       return request<{ users: AdminUser[]; total: number; page: number; per_page: number }>(
@@ -712,6 +729,12 @@ export const api = {
       request<{ success: boolean }>(`/admin/users/${userId}/active`, {
         method: "PATCH",
         body: { is_active: isActive },
+      }),
+
+    setAccess: (userId: string, granted: boolean) =>
+      request<{ success: boolean }>(`/admin/users/${userId}/access`, {
+        method: "PATCH",
+        body: { access_granted: granted },
       }),
 
     removeUser: (userId: string) =>
