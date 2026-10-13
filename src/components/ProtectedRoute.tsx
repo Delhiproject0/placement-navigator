@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { Layout } from "@/components/layout/Layout";
 import { Shimmer } from "@/components/skeletons/CompanyTableSkeleton";
 
 interface ProtectedRouteProps {
@@ -12,27 +11,33 @@ interface ProtectedRouteProps {
 }
 
 /**
- * Route-level auth gate.
+ * Route-level gate. Every route except the sign-in form and the access notice
+ * is wrapped in this - the site is internal to the institute, so there is no
+ * page a stranger, or a signed-in account nobody has approved, should reach.
  *
- * There was no route guard at all - `/admin` relied on an in-page check, which
- * meant the page mounted, fired its queries, and only then decided you were not
- * allowed. This is still a UI affordance, not a security boundary; the API
- * refuses the same requests regardless.
+ * Two different refusals, sent to two different places: no session goes to
+ * /auth, and a session without admin-granted access goes to /no-access, which
+ * says why. Sending both to the sign-in form would leave an unapproved student
+ * signing in over and over with no idea what was wrong.
+ *
+ * This is still a UI affordance, not the security boundary. It stops the page
+ * mounting and firing queries; the API refuses the same requests regardless.
  */
 export function ProtectedRoute({ children, requireEdit, requireAdmin }: ProtectedRouteProps) {
-  const { user, loading, canEdit, isAdmin } = useAuth();
+  const { user, loading, hasAccess, canEdit, isAdmin } = useAuth();
   const location = useLocation();
 
   // Rendering the redirect before the session resolves would bounce a
-  // signed-in user to /auth on every hard refresh.
+  // signed-in user to /auth on every hard refresh. Deliberately not the site
+  // shell: the header and banners belong to people who are already let in.
   if (loading) {
     return (
-      <Layout>
+      <div className="min-h-screen bg-background">
         <div className="container space-y-4 py-10">
           <Shimmer className="h-8 w-56 rounded-sm" />
           <Shimmer className="h-64 w-full rounded-lg" />
         </div>
-      </Layout>
+      </div>
     );
   }
 
@@ -40,6 +45,8 @@ export function ProtectedRoute({ children, requireEdit, requireAdmin }: Protecte
     // `state.from` lets /auth send them back where they were headed.
     return <Navigate to="/auth" replace state={{ from: location.pathname + location.search }} />;
   }
+
+  if (!hasAccess) return <Navigate to="/no-access" replace />;
 
   if ((requireAdmin && !isAdmin) || (requireEdit && !canEdit)) {
     return <Navigate to="/" replace />;

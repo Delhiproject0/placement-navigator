@@ -74,12 +74,14 @@ async function login(email: string, password = SEED_PASSWORD): Promise<string> {
 
 /** An experience written by the seeded student, plus its company. */
 async function seededExperience(): Promise<{ id: string }> {
-  const list = await fetch(`${API}/companies?season=all`).then(
+  // Reads need an approved account now, like everything else.
+  const headers = { authorization: `Bearer ${await login("student@iiit.ac.in")}` };
+  const list = await fetch(`${API}/companies?season=all`, { headers }).then(
     (r) => r.json() as Promise<{ companies: Array<{ id: string; name: string }> }>,
   );
   for (const company of list.companies) {
-    const { items } = (await fetch(`${API}/companies/${company.id}/experiences`).then((r) =>
-      r.json(),
+    const { items } = (await fetch(`${API}/companies/${company.id}/experiences`, { headers }).then(
+      (r) => r.json(),
     )) as { items: Array<{ id: string }> };
     if (items?.length) return items[0];
   }
@@ -118,7 +120,23 @@ describe.runIf(!process.env.SKIP_API_TESTS)("upload authorization", () => {
       body: JSON.stringify({ email, password: SEED_PASSWORD }),
     });
     expect(signup.status).toBe(201);
-    const { access_token } = (await signup.json()) as { access_token: string };
+    const { access_token, user } = (await signup.json()) as {
+      access_token: string;
+      user: { id: string };
+    };
+
+    // A fresh signup has no access to anything, so it would be refused at the
+    // gate and this would pass without the ownership check ever running. Let
+    // it in first, so the 403 below is the one this test is about.
+    const granted = await fetch(`${API}/admin/users/${user.id}/access`, {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${await login("admin@iiit.ac.in")}`,
+      },
+      body: JSON.stringify({ access_granted: true }),
+    });
+    expect(granted.status).toBe(200);
 
     const { status, body } = await upload(
       {

@@ -6,10 +6,18 @@
 -- have no dates at all, because 22 of the 59 live rows are in that state and
 -- code that only ever sees fully-populated rows breaks on contact with them.
 
--- Accounts. Password for all three is "placement123".
+-- Accounts. Password for all four is "placement123".
 select public.app_signup('admin@iiit.ac.in', 'placement123', 'Admin User');
 select public.app_signup('editor@iiit.ac.in', 'placement123', 'Editor User');
 select public.app_signup('student@iiit.ac.in', 'placement123', 'Student User');
+-- Signed up but never approved, which is the state every new account starts
+-- in. Without one of these the "waiting for access" page is unreachable locally.
+select public.app_signup('pending@iiit.ac.in', 'placement123', 'Pending User');
+
+-- Signup leaves access off; an admin grants it. The first three are let in
+-- here so the app is usable straight after a reset.
+update public.app_users set access_granted = true, access_granted_at = now()
+  where email in ('admin@iiit.ac.in', 'editor@iiit.ac.in', 'student@iiit.ac.in');
 
 update public.user_roles set role = 'admin'
   where user_id = (select id from public.app_users where email = 'admin@iiit.ac.in');

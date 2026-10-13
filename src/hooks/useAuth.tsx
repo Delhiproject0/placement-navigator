@@ -14,7 +14,15 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { api, clearSession, onSessionChange, storeSession, tokens, type ApiUser } from "@/lib/api";
+import {
+  api,
+  clearSession,
+  onAccessRevoked,
+  onSessionChange,
+  storeSession,
+  tokens,
+  type ApiUser,
+} from "@/lib/api";
 import type { AppRole, Profile } from "@/types/database";
 
 interface AuthContextType {
@@ -23,10 +31,16 @@ interface AuthContextType {
   /** True until the stored token has been checked against the server. */
   loading: boolean;
   role: AppRole | null;
+  /**
+   * Signed in and let in by an admin. Every page but the sign-in form and the
+   * "waiting for access" notice needs this, not merely `user`.
+   */
+  hasAccess: boolean;
   isAdmin: boolean;
   isEditor: boolean;
   canEdit: boolean;
-  signIn: (email: string, password: string) => Promise<void>;
+  /** Resolves with the account, so the caller can tell "in" from "waiting". */
+  signIn: (email: string, password: string) => Promise<ApiUser>;
   signUp: (email: string, password: string, fullName?: string) => Promise<void>;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -83,12 +97,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     });
   }, []);
 
+  /**
+   * Access withdrawn mid-session. The flag is flipped locally rather than
+   * refetched: the server has just told us the answer, and the route guard
+   * needs it now to move them to the notice.
+   */
+  useEffect(() => {
+    return onAccessRevoked(() => {
+      setUser((current) =>
+        current && current.access_granted ? { ...current, access_granted: false } : current,
+      );
+    });
+  }, []);
+
   const signIn = useCallback(async (email: string, password: string) => {
     const session = await api.auth.login({ email, password });
     storeSession(session);
     setUser(session.user);
     const { profile: myProfile } = await api.auth.me();
     setProfile(myProfile);
+    return session.user;
   }, []);
 
   const signUp = useCallback(async (email: string, password: string, fullName?: string) => {
@@ -121,6 +149,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       profile,
       loading,
       role,
+      hasAccess: Boolean(user?.access_granted),
       isAdmin,
       isEditor,
       canEdit: isAdmin || isEditor,

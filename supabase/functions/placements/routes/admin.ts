@@ -1,4 +1,4 @@
-/** User administration and site statistics. Admin only. */
+/** User administration, access approval and site statistics. Admin only. */
 
 import { db, dbAs, type Caller, type Role } from "../context.ts";
 import { fail, json, readJson, str } from "../http.ts";
@@ -13,11 +13,15 @@ export async function listUsers(url: URL): Promise<Response> {
 
   let query = db
     .from("app_users")
-    .select("id, email, full_name, is_active, email_verified, last_login_at, created_at", {
-      count: "exact",
-    })
+    .select(
+      "id, email, full_name, is_active, access_granted, access_granted_at, email_verified, last_login_at, created_at",
+      { count: "exact" },
+    )
     .order("created_at", { ascending: false })
     .range(from, from + perPage - 1);
+
+  // The approval queue: accounts nobody has let in yet.
+  if (url.searchParams.get("access") === "pending") query = query.eq("access_granted", false);
 
   if (search) {
     const escaped = search.replace(/[%_]/g, (char) => `\\${char}`);
@@ -65,6 +69,22 @@ export async function setUserRole(req: Request, userId: string, caller: Caller):
 
   if (error) return fail(500, "UPDATE_FAILED", "Could not change the role");
 
+  // Promoting someone is vouching for them. Without this an editor could be
+  // appointed and still be locked out, waiting on a second, separate approval
+  // from the same admin who just promoted them. Demotion leaves it alone:
+  // losing a role is not the same decision as being shown the door.
+  if (role !== "viewer") {
+    await db
+      .from("app_users")
+      .update({
+        access_granted: true,
+        access_granted_at: new Date().toISOString(),
+        access_granted_by: caller.id,
+      })
+      .eq("id", userId)
+      .eq("access_granted", false);
+  }
+
   console.log(`[audit] ${caller.email} set role of ${userId} to ${role}`);
   return json({ success: true, role });
 }
@@ -93,6 +113,73 @@ export async function setUserActive(req: Request, userId: string, caller: Caller
 
   console.log(`[audit] ${caller.email} set is_active=${body.is_active} on ${userId}`);
   return json({ success: true });
+}
+
+/**
+ * Grants or withdraws access to the site.
+ *
+ * This is the switch the whole site hangs off: until it is on, an account can
+ * sign in and see nothing. Withdrawing needs no session revocation, unlike
+ * disabling - `getCaller` re-reads the flag on every request, so the very next
+ * call that account makes is refused.
+ */
+export async function setUserAccess(req: Request, userId: string, caller: Caller): Promise<Response> {
+  const body = await readJson<{ access_granted?: boolean }>(req);
+  if (typeof body?.access_granted !== "boolean") {
+    return fail(400, "INVALID_BODY", "access_granted must be true or false");
+  }
+  const granted = body.access_granted;
+
+  const { data: user } = await db
+    .from("app_users")
+    .select("id, access_granted")
+    .eq("id", userId)
+    .maybeSingle();
+  if (!user) return fail(404, "NOT_FOUND", "That user does not exist");
+
+  // An admin is let in by their role, not by this flag, so switching it off
+  // would report success and change nothing. Say so instead.
+  if (!granted) {
+    const { data: roleRow } = await db
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (roleRow?.role === "admin") {
+      return fail(
+        400,
+        "ADMIN_ALWAYS_HAS_ACCESS",
+        "Admins always have access. Change their role first.",
+      );
+    }
+  }
+
+  if (user.access_granted === granted) return json({ success: true, access_granted: granted });
+
+  const { error } = await db
+    .from("app_users")
+    .update({
+      access_granted: granted,
+      access_granted_at: granted ? new Date().toISOString() : null,
+      access_granted_by: granted ? caller.id : null,
+    })
+    .eq("id", userId);
+  if (error) return fail(500, "UPDATE_FAILED", "Could not update access");
+
+  // Written by hand rather than by the audit trigger: the trigger records the
+  // whole row, and the whole row of app_users includes the password hash.
+  const { error: auditError } = await db.from("audit_log").insert({
+    table_name: "app_users",
+    record_id: userId,
+    action: "UPDATE",
+    actor_id: caller.id,
+    before: { access_granted: user.access_granted },
+    after: { access_granted: granted },
+  });
+  if (auditError) console.error("[audit] could not record an access change:", auditError.message);
+
+  console.log(`[audit] ${caller.email} set access_granted=${granted} on ${userId}`);
+  return json({ success: true, access_granted: granted });
 }
 
 /**
@@ -135,11 +222,12 @@ export async function deleteUser(userId: string, caller: Caller): Promise<Respon
 export async function stats(seasonId: string | undefined): Promise<Response> {
   // head: true means only the count comes back. The old version selected every
   // id just to call .length on it.
-  const [companies, experiences, questions, users, seasons, seasonCompanies] = await Promise.all([
+  const [companies, experiences, questions, users, pending, seasons, seasonCompanies] = await Promise.all([
     db.from("companies").select("id", { count: "exact", head: true }),
     db.from("interview_experiences").select("id", { count: "exact", head: true }),
     db.from("interview_questions").select("id", { count: "exact", head: true }),
     db.from("app_users").select("id", { count: "exact", head: true }),
+    db.from("app_users").select("id", { count: "exact", head: true }).eq("access_granted", false),
     db.from("seasons").select("id", { count: "exact", head: true }),
     seasonId
       ? db.from("companies").select("id", { count: "exact", head: true }).eq("season_id", seasonId)
@@ -151,6 +239,7 @@ export async function stats(seasonId: string | undefined): Promise<Response> {
     experiences: experiences.count ?? 0,
     questions: questions.count ?? 0,
     users: users.count ?? 0,
+    pending_access: pending.count ?? 0,
     seasons: seasons.count ?? 0,
     season_companies: seasonCompanies.count,
   });

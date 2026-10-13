@@ -98,7 +98,7 @@ Nineteen tables. The ones worth knowing:
 
 | Table | Holds | Notes |
 | --- | --- | --- |
-| `app_users` | accounts | bcrypt hash via pgcrypto, `is_active` flag |
+| `app_users` | accounts | bcrypt hash via pgcrypto, `is_active` flag, `access_granted` flag |
 | `auth_sessions` | issued sessions | one row per login, revoked on logout |
 | `password_resets` | reset tokens | single use, expiring |
 | `user_roles` | role per user | `admin` / `editor` / `viewer` |
@@ -286,24 +286,84 @@ curl -s https://supabase.dileepadari.dev/functions/v1/hello
 
 ## Authorization model
 
+### The access gate
+
+The site is internal to IIIT Hyderabad. **Nothing is public, and an account is
+not enough**: an admin grants access per account, stored as
+`app_users.access_granted`. A new signup has it off.
+
+| Caller | What they reach |
+|---|---|
+| No session | `/health`, the `/auth/*` endpoints, and nothing else (401) |
+| Signed in, not approved | additionally `/auth/me` and `/auth/change-password`; everything else is 403 `ACCESS_PENDING` |
+| Signed in and approved | the role table below |
+
+The pieces, and why each is the way it is:
+
+- **One gate, not one per route.** `index.ts` calls `requireAccess` once, after
+  the handful of open routes and before everything else. A route added later is
+  closed unless someone deliberately puts it above that line. The per-route
+  `requireUser` calls further down are now redundant and left in place.
+- **Read per request.** `getCaller` re-reads the flag from the database every
+  time, like the role, so withdrawing access bites on the next request rather
+  than when the hour-long token expires. No session revocation is needed.
+- **403, not 401.** The client discards its tokens on any 401. A waiting student
+  would be signed out on every page load and never see why.
+- **Admins are let in by their role.** The first admin is made by hand in SQL;
+  a flag they forgot to set on themselves would lock out the only person who
+  can grant it. The API refuses to "withdraw" an admin's access for the same
+  reason. Promoting someone to editor or admin grants access too.
+- **`is_active` is a different thing.** Off means the account cannot sign in at
+  all. `access_granted` off means it can sign in and is told it is waiting.
+- **The calendar feed is checked too.** Its URL is a bearer credential living in
+  a calendar app, so `serveCalendar` looks up the token's owner on every poll
+  and 404s once they are disabled or unapproved.
+- **The anon key reaches no table.** It ships in the bundle, and the baseline
+  had granted it `select` on companies, experiences, questions, comments, tags,
+  seasons, announcements and attachments. The gate in the function meant nothing
+  while `/rest/v1/companies` answered that key, so the access-gate migration
+  drops those policies and revokes every table grant from `anon` and
+  `authenticated`. The one thing left to the anon key is `keepalive()`, which
+  returns `true` for the scheduled ping.
+- **Grants are audited by hand.** `setUserAccess` writes its own `audit_log`
+  row holding only the flag. The generic trigger records the whole row, and the
+  whole row of `app_users` includes the password hash.
+
+In the browser, every route except `/auth` and `/no-access` is wrapped in
+`ProtectedRoute`: no session goes to `/auth`, a session without access goes to
+`/no-access`. Those two pages use `GateShell` rather than `Layout`, because the
+real shell links to and fetches things the visitor may not have. That is the
+polite half; the gate above is the half that counts.
+
+**What the gate does not cover: uploaded files.** Attachments are served by
+Caddy from `mystorage.dileepadari.dev` at plain public URLs, with no check of
+any kind. The API no longer hands those URLs to anyone unapproved, and the
+filenames carry a random UUID, but a URL that has been copied out works for
+anyone who has it. Closing that needs a change on the storage box (signed URLs,
+or serving through an authenticated proxy), not in this repository.
+
+### Roles
+
 Three roles in the `app_role` enum: `admin`, `editor`, `viewer`. A user's role is
-a row in `user_roles`; there is no email-domain rule.
+a row in `user_roles`; there is no email-domain rule. Every row below assumes
+the account has been granted access.
 
 | | viewer | editor | admin |
 |---|---|---|---|
-| Read companies, experiences, questions | yes (so can anonymous) | yes | yes |
+| Read companies, experiences, questions | yes | yes | yes |
 | Contribute an experience or question | yes | yes | yes |
 | Edit/delete **own** contribution | yes | yes | yes |
 | Edit/delete **anyone's** contribution | no | yes | yes |
 | Create/edit a company | no | yes | yes |
 | Delete a company | no | no | yes |
 | Manage users and roles | no | no | yes |
+| Grant or withdraw access | no | no | yes |
 
-`useAuth()` exposes `isAdmin` / `isEditor` / `canEdit` for **UI affordances only**.
+`useAuth()` exposes `hasAccess` / `isAdmin` / `isEditor` / `canEdit` for **UI affordances only**.
 Hiding a button is not authorization - the check that matters is the one in the
 edge function route.
 
-Which is why `tests/api` matters more than its line count suggests. Those 63 tests
+Which is why `tests/api` matters more than its line count suggests. Those 73 tests
 exercise the function's authorization directly - one student cannot attach a file
 to another's write-up, a viewer cannot edit someone else's contribution - and they
 run against a real Postgres, not a mock, because the interesting failures are at
@@ -342,9 +402,11 @@ intact.
 ## Seed data
 
 `supabase/seed.sql` runs on every `supabase db reset` and is what the local stack,
-the API tests, and the screenshots all share. It creates three accounts through
-`app_signup()` (admin, editor, student, all with the password `placement123`, so
-the hashes are real bcrypt output rather than pasted literals), three seasons with
+the API tests, and the screenshots all share. It creates four accounts through
+`app_signup()` (admin, editor, student and pending, all with the password
+`placement123`, so the hashes are real bcrypt output rather than pasted
+literals; the first three are granted access and `pending` is left waiting, so
+the `/no-access` page is reachable locally), three seasons with
 `2025-26` current, one company per phase so every branch of `resolvePhase()` has a
 row, and a handful of experiences and questions.
 
@@ -480,8 +542,14 @@ app's own login form as the seeded student account.
   members at 2 emails/hour, so password reset and email confirmation will not
   deliver to students until a real provider (Resend, Brevo, SES) is wired into
   Auth → SMTP Settings. The UI is built and will start working the moment it is.
-- **Signup is open to any email address.** Restricting to IIIT-H domains is
-  controlled by `app_settings.signup_allowed_domains`, enforced by a trigger.
+- **Signup is open to any email address**, though an account now opens nothing
+  until an admin approves it. Restricting who can even create one to IIIT-H
+  domains is controlled by `app_settings.signup_allowed_domains`.
+- **Nobody is told when an account is waiting.** With no SMTP there is no email
+  to admins on signup or to the student on approval; admins find the queue
+  under Admin, Users, "Waiting only".
+- **Uploaded files are not behind the access gate.** See the note at the end of
+  [the access gate](#the-access-gate).
 - **The project ref changed.** `supabase/config.toml` previously pointed at
   `faynpnofvegarourkykh`, which no longer exists (NXDOMAIN). The live ref is
   `jwaqisnpxkavkkjzvutl`. If something references the old ref, it is stale.

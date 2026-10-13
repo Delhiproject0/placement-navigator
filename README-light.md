@@ -168,6 +168,7 @@ render at that exact viewport, not a scaled-down desktop shot.
 | [Command palette](#command-palette) | Jump to any company or page from the keyboard |
 | [CSV import and export](#csv-import-and-export) | Bulk-load a season, take the data with you |
 | [Admin surface](#admin-surface) | Users, roles, seasons, moderation, announcements, audit |
+| [Access](#access) | Internal to IIIT Hyderabad: nothing is public, and an admin approves every account |
 | [Roles](#roles) | `viewer`, `editor`, `admin`, enforced by the API |
 
 ---
@@ -294,10 +295,23 @@ import, since importing one would write a computed value back over its source.
 
 ### Admin surface
 
-Users and roles, season management, comment moderation, the announcement banner,
-signup domain rules, and an append-only audit log of who changed what.
+Users and roles, access approval, season management, comment moderation, the
+announcement banner, signup domain rules, and an append-only audit log of who
+changed what.
 
 **Using it:** **Admin** in the header, visible to admins.
+
+### Access
+
+PlaceTrack is an internal portal for IIIT Hyderabad students, and what is in it
+is private to the institute. No page is public. Signing up creates an account
+that can see nothing: an admin has to grant it access first, and until then
+every page leads to a notice saying so.
+
+**Using it:** as a student, sign up and ask a placement admin to approve your
+address. As an admin, **Admin**, then **Users**, turn on **Waiting only** for the
+approval queue, and flip the **Access** switch. Switching it back off takes
+effect on that person's very next request.
 
 ### Roles
 

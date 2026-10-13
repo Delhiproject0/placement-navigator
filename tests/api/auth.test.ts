@@ -54,13 +54,40 @@ async function api(path: string, init: RequestInit = {}, token?: string) {
   return { status: response.status, body: body as Record<string, never> };
 }
 
+interface TestSession {
+  access_token: string;
+  refresh_token: string;
+  user: { id: string; role: string; access_granted: boolean };
+}
+
 async function login(email: string, password = SEED_PASSWORD) {
   const { body } = await api("/auth/login", {
     method: "POST",
     body: JSON.stringify({ email, password }),
   });
-  return body as unknown as { access_token: string; refresh_token: string; user: { id: string; role: string } };
+  return body as unknown as TestSession;
 }
+
+/** A brand new account: signed in, and not yet let in by anyone. */
+async function signupFresh(prefix: string) {
+  const email = `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1e6)}@iiit.ac.in`;
+  const { status, body } = await api("/auth/signup", {
+    method: "POST",
+    body: JSON.stringify({ email, password: SEED_PASSWORD }),
+  });
+  expect(status).toBe(201);
+  return { email, ...(body as unknown as TestSession) };
+}
+
+async function setAccess(userId: string, granted: boolean, adminToken: string) {
+  return api(
+    `/admin/users/${userId}/access`,
+    { method: "PATCH", body: JSON.stringify({ access_granted: granted }) },
+    adminToken,
+  );
+}
+
+const errorCode = (body: unknown) => (body as { error?: { code?: string } })?.error?.code;
 
 describe.runIf(!process.env.SKIP_API_TESTS)("auth", () => {
   it.runIf(stackUp)("signs a seeded user in and returns a usable token", async () => {
@@ -193,7 +220,7 @@ describe.runIf(!process.env.SKIP_API_TESTS)("authorization", () => {
     const student = await login("student@iiit.ac.in");
     const editor = await login("editor@iiit.ac.in");
 
-    const companies = await api("/companies");
+    const companies = await api("/companies", {}, student.access_token);
     const companyId = (companies.body as unknown as { companies: Array<{ id: string }> }).companies[0].id;
 
     const created = await api(
@@ -227,14 +254,14 @@ describe.runIf(!process.env.SKIP_API_TESTS)("authorization", () => {
 
   it.runIf(stackUp)("stops an unrelated user editing someone else's contribution", async () => {
     const student = await login("student@iiit.ac.in");
-    const outsiderEmail = `outsider-${Date.now()}@iiit.ac.in`;
-    const outsider = await api("/auth/signup", {
-      method: "POST",
-      body: JSON.stringify({ email: outsiderEmail, password: SEED_PASSWORD }),
-    });
-    const outsiderToken = (outsider.body as unknown as { access_token: string }).access_token;
+    const admin = await login("admin@iiit.ac.in");
+    const outsider = await signupFresh("outsider");
+    const outsiderToken = outsider.access_token;
+    // Let in, so the refusal below is about ownership and not about the gate -
+    // an unapproved account would get a 403 here whatever the ownership rule did.
+    expect((await setAccess(outsider.user.id, true, admin.access_token)).status).toBe(200);
 
-    const companies = await api("/companies");
+    const companies = await api("/companies", {}, student.access_token);
     const companyId = (companies.body as unknown as { companies: Array<{ id: string }> }).companies[0].id;
 
     const created = await api(
@@ -257,6 +284,7 @@ describe.runIf(!process.env.SKIP_API_TESTS)("authorization", () => {
       outsiderToken,
     );
     expect(hijack.status).toBe(403);
+    expect(errorCode(hijack.body)).not.toBe("ACCESS_PENDING");
   });
 
   it.runIf(stackUp)("refuses to let an admin demote themselves", async () => {
@@ -282,7 +310,7 @@ describe.runIf(!process.env.SKIP_API_TESTS)("authorization", () => {
 describe.runIf(!process.env.SKIP_API_TESTS)("validation", () => {
   it.runIf(stackUp)("reports per-field errors rather than a raw database error", async () => {
     const student = await login("student@iiit.ac.in");
-    const companies = await api("/companies");
+    const companies = await api("/companies", {}, student.access_token);
     const companyId = (companies.body as unknown as { companies: Array<{ id: string }> }).companies[0].id;
 
     const { status, body } = await api(
@@ -342,7 +370,7 @@ describe.runIf(!process.env.SKIP_API_TESTS)("csv import", () => {
     expect(preview.status).toBe(200);
     expect((preview.body as unknown as { to_create: number }).to_create).toBe(1);
 
-    const companies = await api("/companies");
+    const companies = await api("/companies", {}, editor.access_token);
     const names = (companies.body as unknown as { companies: Array<{ name: string }> }).companies.map(
       (company) => company.name,
     );
@@ -398,7 +426,7 @@ describe.runIf(!process.env.SKIP_API_TESTS)("csv import", () => {
     expect((second.body as unknown as { created: number; updated: number }).created).toBe(0);
     expect((second.body as unknown as { updated: number }).updated).toBe(1);
 
-    const companies = await api("/companies");
+    const companies = await api("/companies", {}, editor.access_token);
     const matches = (
       companies.body as unknown as { companies: Array<{ id: string; name: string }> }
     ).companies.filter((company) => company.name === name);
@@ -571,7 +599,7 @@ describe.runIf(!process.env.SKIP_API_TESTS)("admin surface", () => {
     );
   });
 
-  it.runIf(stackUp)("publishes an announcement that the public endpoint then serves", async () => {
+  it.runIf(stackUp)("publishes an announcement that the banner endpoint then serves", async () => {
     const admin = await login("admin@iiit.ac.in");
     const title = `Notice ${Date.now()}`;
 
@@ -583,8 +611,9 @@ describe.runIf(!process.env.SKIP_API_TESTS)("admin surface", () => {
     expect(created.status).toBe(201);
     const id = (created.body as unknown as { announcement: { id: string } }).announcement.id;
 
-    // The banner endpoint needs no auth at all.
-    const live = await api("/announcements");
+    // The banner is for people inside the gate, not for the open internet.
+    expect((await api("/announcements")).status).toBe(401);
+    const live = await api("/announcements", {}, admin.access_token);
     expect(live.status).toBe(200);
     const titles = (live.body as unknown as { announcements: Array<{ title: string }> }).announcements.map(
       (a) => a.title,
@@ -592,7 +621,7 @@ describe.runIf(!process.env.SKIP_API_TESTS)("admin surface", () => {
     expect(titles).toContain(title);
 
     await api(`/admin/announcements/${id}`, { method: "DELETE" }, admin.access_token);
-    const after = await api("/announcements");
+    const after = await api("/announcements", {}, admin.access_token);
     expect(
       (after.body as unknown as { announcements: Array<{ title: string }> }).announcements.map(
         (a) => a.title,
@@ -603,10 +632,10 @@ describe.runIf(!process.env.SKIP_API_TESTS)("admin surface", () => {
 
 describe.runIf(!process.env.SKIP_API_TESTS)("discussion", () => {
   async function firstExperienceId(token: string): Promise<string> {
-    const companies = await api("/companies");
+    const companies = await api("/companies", {}, token);
     const list = (companies.body as unknown as { companies: Array<{ id: string }> }).companies;
     for (const company of list) {
-      const items = await api(`/companies/${company.id}/experiences`);
+      const items = await api(`/companies/${company.id}/experiences`, {}, token);
       const found = (items.body as unknown as { items: Array<{ id: string }> }).items[0];
       if (found) return found.id;
     }
@@ -626,7 +655,7 @@ describe.runIf(!process.env.SKIP_API_TESTS)("discussion", () => {
     return (created.body as unknown as { item: { id: string } }).item.id;
   }
 
-  it.runIf(stackUp)("requires an account to comment but not to read", async () => {
+  it.runIf(stackUp)("requires an account to comment, and to read", async () => {
     const student = await login("student@iiit.ac.in");
     const experienceId = await firstExperienceId(student.access_token);
 
@@ -639,7 +668,9 @@ describe.runIf(!process.env.SKIP_API_TESTS)("discussion", () => {
       ).status,
     ).toBe(401);
 
-    expect((await api(`/comments?entity_type=experience&entity_id=${experienceId}`)).status).toBe(200);
+    const thread = `/comments?entity_type=experience&entity_id=${experienceId}`;
+    expect((await api(thread)).status).toBe(401);
+    expect((await api(thread, {}, student.access_token)).status).toBe(200);
   });
 
   it.runIf(stackUp)("flattens a reply to a reply onto the same parent", async () => {
@@ -715,7 +746,11 @@ describe.runIf(!process.env.SKIP_API_TESTS)("discussion", () => {
     ).toBe(403);
     expect((await api(`/comments/${id}`, { method: "DELETE" }, admin.access_token)).status).toBe(200);
 
-    const after = await api(`/comments?entity_type=experience&entity_id=${experienceId}`);
+    const after = await api(
+      `/comments?entity_type=experience&entity_id=${experienceId}`,
+      {},
+      admin.access_token,
+    );
     const removed = (
       after.body as unknown as { comments: Array<{ id: string; is_deleted: boolean; body: string | null }> }
     ).comments.find((comment) => comment.id === id);
@@ -766,7 +801,7 @@ describe.runIf(!process.env.SKIP_API_TESTS)("tags", () => {
     const student = await login("student@iiit.ac.in");
     const editor = await login("editor@iiit.ac.in");
 
-    const companies = await api("/companies");
+    const companies = await api("/companies", {}, student.access_token);
     const companyId = (companies.body as unknown as { companies: Array<{ id: string }> }).companies[0].id;
 
     expect(
@@ -788,8 +823,211 @@ describe.runIf(!process.env.SKIP_API_TESTS)("tags", () => {
     expect(set.status).toBe(200);
     expect((set.body as unknown as { tags: string[] }).tags).toEqual(["fintech", "intern-ppo"]);
 
-    const read = await api(`/companies/${companyId}/tags`);
+    const read = await api(`/companies/${companyId}/tags`, {}, student.access_token);
     const slugs = (read.body as unknown as { tags: Array<{ slug: string }> }).tags.map((t) => t.slug);
     expect(slugs.sort()).toEqual(["fintech", "intern-ppo"]);
+  });
+});
+
+describe.runIf(!process.env.SKIP_API_TESTS)("access gate", () => {
+  /**
+   * Every route that used to answer a stranger. Kept as a list so that the day
+   * someone adds a read route above the gate, the place to notice is obvious.
+   */
+  async function readRoutes(token: string): Promise<string[]> {
+    const companies = await api("/companies", {}, token);
+    const id = (companies.body as unknown as { companies: Array<{ id: string }> }).companies[0].id;
+    return [
+      "/companies",
+      "/companies?season=all",
+      `/companies/${id}`,
+      `/companies/${id}/experiences`,
+      `/companies/${id}/questions`,
+      `/companies/${id}/history`,
+      `/companies/${id}/tags`,
+      "/seasons",
+      "/tags",
+      "/announcements",
+      `/attachments?entity_type=company&entity_id=${id}`,
+      "/file-text?url=https://mystorage.dileepadari.dev/documents/placements/x.txt",
+      `/comments?entity_type=experience&entity_id=${id}`,
+      `/votes?entity_type=experience&ids=${id}`,
+    ];
+  }
+
+  it.runIf(stackUp)("serves nothing at all to someone who is not signed in", async () => {
+    const student = await login("student@iiit.ac.in");
+    for (const path of await readRoutes(student.access_token)) {
+      const { status, body } = await api(path);
+      expect(status, `${path} anonymous`).toBe(401);
+      // The refusal must not carry the data along with it.
+      expect(JSON.stringify(body), path).not.toContain("companies");
+    }
+  });
+
+  it.runIf(stackUp)("serves nothing to an account no admin has approved", async () => {
+    const student = await login("student@iiit.ac.in");
+    const fresh = await signupFresh("unapproved");
+    expect(fresh.user.access_granted).toBe(false);
+
+    for (const path of await readRoutes(student.access_token)) {
+      const { status, body } = await api(path, {}, fresh.access_token);
+      expect(status, `${path} unapproved`).toBe(403);
+      expect(errorCode(body), path).toBe("ACCESS_PENDING");
+    }
+
+    // Writes and personal routes are closed too, not just reads.
+    for (const [method, path] of [
+      ["POST", "/experiences"],
+      ["POST", "/comments"],
+      ["POST", "/votes"],
+      ["POST", "/upload"],
+      ["GET", "/me/profile"],
+      ["GET", "/me/bookmarks"],
+      ["GET", "/me/applications"],
+      ["GET", "/me/contributions"],
+      ["POST", "/calendar/token"],
+      ["GET", "/admin/users"],
+    ] as const) {
+      const { status, body } = await api(path, { method, body: method === "POST" ? "{}" : undefined }, fresh.access_token);
+      expect(status, `${method} ${path}`).toBe(403);
+      expect(errorCode(body), `${method} ${path}`).toBe("ACCESS_PENDING");
+    }
+  });
+
+  it.runIf(stackUp)("still tells a waiting account who it is, so the app can explain", async () => {
+    // 403, never 401: the client throws its tokens away on a 401, which would
+    // sign a waiting student out on every page load.
+    const pending = await login("pending@iiit.ac.in");
+    expect(pending.user.access_granted).toBe(false);
+
+    const me = await api("/auth/me", {}, pending.access_token);
+    expect(me.status).toBe(200);
+    expect((me.body as unknown as { user: { access_granted: boolean } }).user.access_granted).toBe(false);
+  });
+
+  it.runIf(stackUp)("opens on an admin's grant and shuts again on the very next request", async () => {
+    const admin = await login("admin@iiit.ac.in");
+    const fresh = await signupFresh("granted");
+
+    expect((await api("/companies", {}, fresh.access_token)).status).toBe(403);
+
+    expect((await setAccess(fresh.user.id, true, admin.access_token)).status).toBe(200);
+    // Same token as before: the grant is read from the database per request,
+    // so nobody has to sign in again to be let in.
+    expect((await api("/companies", {}, fresh.access_token)).status).toBe(200);
+    const me = await api("/auth/me", {}, fresh.access_token);
+    expect((me.body as unknown as { user: { access_granted: boolean } }).user.access_granted).toBe(true);
+
+    expect((await setAccess(fresh.user.id, false, admin.access_token)).status).toBe(200);
+    // And the same token again. An access token lives an hour; withdrawing
+    // access must not take an hour to mean anything.
+    const after = await api("/companies", {}, fresh.access_token);
+    expect(after.status).toBe(403);
+    expect(errorCode(after.body)).toBe("ACCESS_PENDING");
+  });
+
+  it.runIf(stackUp)("does not let a refresh launder a withdrawn grant", async () => {
+    const admin = await login("admin@iiit.ac.in");
+    const fresh = await signupFresh("refresh");
+
+    const refreshed = await api("/auth/refresh", {
+      method: "POST",
+      body: JSON.stringify({ refresh_token: fresh.refresh_token }),
+    });
+    expect(refreshed.status).toBe(200);
+    const next = refreshed.body as unknown as TestSession;
+    expect(next.user.access_granted).toBe(false);
+    expect((await api("/companies", {}, next.access_token)).status).toBe(403);
+
+    await setAccess(fresh.user.id, true, admin.access_token);
+    await setAccess(fresh.user.id, false, admin.access_token);
+    expect((await api("/companies", {}, next.access_token)).status).toBe(403);
+  });
+
+  it.runIf(stackUp)("only lets an admin grant access", async () => {
+    const student = await login("student@iiit.ac.in");
+    const editor = await login("editor@iiit.ac.in");
+    const fresh = await signupFresh("selfserve");
+
+    // Not yourself, not a student, not an editor.
+    for (const token of [fresh.access_token, student.access_token, editor.access_token]) {
+      expect((await setAccess(fresh.user.id, true, token)).status).toBe(403);
+    }
+    expect((await setAccess(fresh.user.id, true, "")).status).toBe(401);
+    expect((await api("/companies", {}, fresh.access_token)).status).toBe(403);
+  });
+
+  it.runIf(stackUp)("lists who is waiting, and records who let them in", async () => {
+    const admin = await login("admin@iiit.ac.in");
+    const fresh = await signupFresh("queue");
+
+    const waiting = await api(`/admin/users?access=pending&q=${fresh.email}`, {}, admin.access_token);
+    const rows = (waiting.body as unknown as { users: Array<{ id: string; access_granted: boolean }> }).users;
+    expect(rows.map((row) => row.id)).toContain(fresh.user.id);
+    for (const row of rows) expect(row.access_granted).toBe(false);
+
+    await setAccess(fresh.user.id, true, admin.access_token);
+
+    const afterGrant = await api(`/admin/users?access=pending&q=${fresh.email}`, {}, admin.access_token);
+    expect(
+      (afterGrant.body as unknown as { users: Array<{ id: string }> }).users.map((row) => row.id),
+    ).not.toContain(fresh.user.id);
+
+    const log = await api("/admin/audit?per_page=20", {}, admin.access_token);
+    const entry = (log.body as unknown as { entries: Array<Record<string, unknown>> }).entries.find(
+      (row) => row.table_name === "app_users" && row.record_id === fresh.user.id,
+    );
+    expect(entry, "the grant was not recorded").toBeTruthy();
+    expect(entry!.actor_email).toBe("admin@iiit.ac.in");
+    // The whole row of app_users includes the password hash. Only the flag
+    // may be written to a log every admin can read.
+    expect(entry!.after).toEqual({ access_granted: true });
+    expect(JSON.stringify(entry)).not.toContain("password");
+  });
+
+  it.runIf(stackUp)("refuses to pretend an admin's access was withdrawn", async () => {
+    const admin = await login("admin@iiit.ac.in");
+    const { status, body } = await setAccess(admin.user.id, false, admin.access_token);
+    expect(status).toBe(400);
+    expect(errorCode(body)).toBe("ADMIN_ALWAYS_HAS_ACCESS");
+    expect((await api("/companies", {}, admin.access_token)).status).toBe(200);
+  });
+
+  it.runIf(stackUp)("lets in someone promoted to editor without a second approval", async () => {
+    const admin = await login("admin@iiit.ac.in");
+    const fresh = await signupFresh("promoted");
+
+    const promoted = await api(
+      `/admin/users/${fresh.user.id}/role`,
+      { method: "PATCH", body: JSON.stringify({ role: "editor" }) },
+      admin.access_token,
+    );
+    expect(promoted.status).toBe(200);
+    expect((await api("/companies", {}, fresh.access_token)).status).toBe(200);
+  });
+
+  it.runIf(stackUp)("stops a calendar feed when its owner loses access", async () => {
+    // The feed URL is a bearer credential that lives in a calendar app long
+    // after the session that minted it. If it kept working, withdrawing access
+    // would leave the schedule flowing out indefinitely.
+    const admin = await login("admin@iiit.ac.in");
+    const fresh = await signupFresh("feed");
+    await setAccess(fresh.user.id, true, admin.access_token);
+
+    const issued = await api("/calendar/token", { method: "POST" }, fresh.access_token);
+    const token = (issued.body as unknown as { token: string }).token;
+    expect((await fetch(`${API}/calendar/${token}.ics`)).status).toBe(200);
+
+    await setAccess(fresh.user.id, false, admin.access_token);
+    expect((await fetch(`${API}/calendar/${token}.ics`)).status).toBe(404);
+
+    await setAccess(fresh.user.id, true, admin.access_token);
+    await api(
+      `/admin/users/${fresh.user.id}/active`,
+      { method: "PATCH", body: JSON.stringify({ is_active: false }) },
+      admin.access_token,
+    );
+    expect((await fetch(`${API}/calendar/${token}.ics`)).status).toBe(404);
   });
 });

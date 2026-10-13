@@ -5,7 +5,10 @@ interface SeoProps {
   description?: string;
   /** Leave unset to use the current URL. */
   canonicalPath?: string;
-  /** Stops search engines indexing personal pages. */
+  /**
+   * Redundant now - the whole site is internal, so every page is noindex
+   * whatever this says. Kept so existing callers need no change.
+   */
   noIndex?: boolean;
 }
 
@@ -31,7 +34,7 @@ function upsertMeta(selector: string, attribute: "name" | "property", key: strin
  * on it. Done directly against the DOM rather than pulling in react-helmet -
  * twelve routes do not justify the dependency.
  */
-export function Seo({ title, description, canonicalPath, noIndex }: SeoProps) {
+export function Seo({ title, description, canonicalPath }: SeoProps) {
   useEffect(() => {
     const fullTitle = title === SITE_NAME ? title : `${title} - ${SITE_NAME}`;
     const summary = description ?? DEFAULT_DESCRIPTION;
@@ -54,15 +57,10 @@ export function Seo({ title, description, canonicalPath, noIndex }: SeoProps) {
     }
     canonical.href = url;
 
-    // Personal pages must not be indexed. The tag is removed again on unmount
-    // rather than left behind, or navigating away would carry noindex with it.
-    const robots = document.head.querySelector<HTMLMetaElement>('meta[name="robots"]');
-    if (noIndex) {
-      upsertMeta('meta[name="robots"]', "name", "robots", "noindex, nofollow");
-    } else if (robots) {
-      robots.remove();
-    }
-  }, [title, description, canonicalPath, noIndex]);
+    // Nothing on this site is public, so no page is ever indexable. This used
+    // to remove the tag on pages that were open to everyone; there are none.
+    upsertMeta('meta[name="robots"]', "name", "robots", "noindex, nofollow, noarchive");
+  }, [title, description, canonicalPath]);
 
   return null;
 }

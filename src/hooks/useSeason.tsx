@@ -18,6 +18,7 @@ import {
 import { useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api, type Season } from "@/lib/api";
+import { useAuth } from "@/hooks/useAuth";
 
 const STORAGE_KEY = "placetrack.season";
 
@@ -41,9 +42,15 @@ function seasonFromUrl(): string | null {
 }
 
 export function SeasonProvider({ children }: { children: ReactNode }) {
+  // This provider wraps the sign-in page too, so the query has to wait for
+  // someone who is allowed the answer - otherwise every visit to /auth fires a
+  // request that can only come back refused.
+  const { hasAccess } = useAuth();
+
   const { data: seasons = [], isPending } = useQuery({
     queryKey: ["seasons"],
     queryFn: () => api.seasons.list(),
+    enabled: hasAccess,
     // The set of seasons changes about once a year.
     staleTime: 10 * 60_000,
   });

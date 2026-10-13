@@ -240,10 +240,10 @@ export function useUpdateProfile() {
 
 // --- admin -----------------------------------------------------------------
 
-export function useAdminUsers(search: string, page: number, enabled: boolean) {
+export function useAdminUsers(search: string, page: number, pendingOnly: boolean, enabled: boolean) {
   return useQuery({
-    queryKey: qk.admin.users(search, page),
-    queryFn: () => api.admin.users({ q: search || undefined, page }),
+    queryKey: [...qk.admin.users(search, page), pendingOnly ? "pending" : "everyone"],
+    queryFn: () => api.admin.users({ q: search || undefined, page, pendingOnly }),
     enabled,
     // Keeps the previous page on screen while the next one loads, instead of
     // collapsing the table to a skeleton on every pagination click.
@@ -307,6 +307,8 @@ export function useSetUserRole() {
       api.admin.setRole(userId, role),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
+      // Promoting someone grants access too, which changes the waiting count.
+      queryClient.invalidateQueries({ queryKey: ["admin", "stats"] });
       toast.success("Role updated");
     },
     ...mutationDefaults("Could not change the role"),
@@ -323,6 +325,22 @@ export function useSetUserActive() {
       toast.success(variables.isActive ? "Account enabled" : "Account disabled");
     },
     ...mutationDefaults("Could not update the account"),
+  });
+}
+
+/** Lets an account into the site, or shows it the door. */
+export function useSetUserAccess() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, granted }: { userId: string; granted: boolean }) =>
+      api.admin.setAccess(userId, granted),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
+      // The waiting count on the dashboard moves with every grant.
+      queryClient.invalidateQueries({ queryKey: ["admin", "stats"] });
+      toast.success(variables.granted ? "Access granted" : "Access withdrawn");
+    },
+    ...mutationDefaults("Could not update access"),
   });
 }
 

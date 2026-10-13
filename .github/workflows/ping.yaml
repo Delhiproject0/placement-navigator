@@ -12,9 +12,12 @@ name: Ping Supabase to Prevent Pausing
 # change landed on its default branch. Accepting either means neither copy
 # depends on which secret its owner happened to add.
 #
-# The read itself is deliberately narrow: one id from one table. The old
-# version queried /rest/v1/ bare, which returns a body even for a project that
-# no longer exists, so it could not tell a live project from a dead one.
+# The call is `keepalive()`, a function that returns `true` and nothing else.
+# It used to read one company id, but the site is internal now and the anon key
+# can no longer read any table - which is the point, since that key ships in the
+# browser bundle. The function still runs inside Postgres, so a 200 with `true`
+# proves the database answered, which the bare /rest/v1/ root never did: that
+# returns a body even for a project that no longer exists.
 
 on:
   schedule:
@@ -40,9 +43,9 @@ jobs:
             exit 1
           fi
 
-          # The anon key is preferred: this only needs to read one public row,
-          # and reaching for the service role to do that would hand the job
-          # more authority than the task warrants.
+          # The anon key is preferred: this only needs to call one harmless
+          # function, and reaching for the service role to do that would hand
+          # the job more authority than the task warrants.
           if [ -n "${SUPABASE_ANON_KEY:-}" ]; then
             key="${SUPABASE_ANON_KEY}"
             echo "Authenticating with SUPABASE_ANON_KEY."
@@ -55,9 +58,11 @@ jobs:
           fi
 
           status=$(curl -sS -o response.json -w '%{http_code}' \
-            "${SUPABASE_URL}/rest/v1/companies?select=id&limit=1" \
+            -X POST "${SUPABASE_URL}/rest/v1/rpc/keepalive" \
             -H "apikey: ${key}" \
-            -H "Authorization: Bearer ${key}")
+            -H "Authorization: Bearer ${key}" \
+            -H "Content-Type: application/json" \
+            -d '{}')
 
           if [ "${status}" != "200" ]; then
             echo "::error::Expected HTTP 200, got ${status}." >&2
@@ -65,8 +70,8 @@ jobs:
             exit 1
           fi
 
-          # A JSON array is the only shape that proves PostgREST actually served
-          # the table, rather than returning an error object with a 200.
-          jq -e 'type == "array"' response.json > /dev/null
+          # A literal `true` is the only body that proves Postgres ran the
+          # function, rather than PostgREST returning an error object.
+          jq -e '. == true' response.json > /dev/null
 
-          echo "Ping OK: $(jq -c 'length' response.json) row(s) returned."
+          echo "Ping OK: the database answered."

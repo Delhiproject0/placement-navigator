@@ -6,6 +6,10 @@
  * Authorization is therefore an explicit check on every route, and this module
  * is where the caller's identity comes from. Treat `requireUser` /
  * `requireEditor` / `requireAdmin` as mandatory, not optional.
+ *
+ * Being signed in is not enough to read anything. The site is internal to the
+ * institute, so an admin grants access per account (`app_users.access_granted`)
+ * and `requireAccess` is what every content route sits behind.
  */
 
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
@@ -67,6 +71,12 @@ export interface Caller {
   id: string;
   email: string;
   role: Role;
+  /**
+   * Whether an admin has let this account in. Admins always count as granted:
+   * the first admin is made by hand in SQL, and a flag they forgot to set on
+   * themselves would lock the only person able to grant it out of the site.
+   */
+  hasAccess: boolean;
 }
 
 /** The caller, or null when unauthenticated. Never throws. */
@@ -90,15 +100,20 @@ export async function getCaller(req: Request): Promise<Caller | null> {
   // An account disabled mid-session must stop working immediately.
   const { data: user } = await db
     .from("app_users")
-    .select("is_active")
+    .select("is_active, access_granted")
     .eq("id", claims.sub)
     .maybeSingle();
   if (!user?.is_active) return null;
 
+  const role = (data?.role as Role | undefined) ?? "viewer";
+
   return {
     id: claims.sub,
     email: claims.email,
-    role: (data?.role as Role | undefined) ?? "viewer",
+    role,
+    // Read here, per request, for the same reason as the role: revoking access
+    // has to bite on the next request, not when the token expires.
+    hasAccess: role === "admin" || user.access_granted === true,
   };
 }
 
@@ -107,8 +122,28 @@ export function requireUser(caller: Caller | null): Response | null {
   return null;
 }
 
-export function requireEditor(caller: Caller | null): Response | null {
+/**
+ * Signed in *and* let in by an admin.
+ *
+ * 403 rather than 401 on purpose: the client treats a 401 as a dead session
+ * and throws the tokens away, which would sign a waiting student out every
+ * time they loaded a page and hide the explanation they need to see.
+ */
+export function requireAccess(caller: Caller | null): Response | null {
   const unauth = requireUser(caller);
+  if (unauth) return unauth;
+  if (!caller!.hasAccess) {
+    return fail(
+      403,
+      "ACCESS_PENDING",
+      "Your account has not been given access yet. An admin has to approve it.",
+    );
+  }
+  return null;
+}
+
+export function requireEditor(caller: Caller | null): Response | null {
+  const unauth = requireAccess(caller);
   if (unauth) return unauth;
   if (caller!.role !== "admin" && caller!.role !== "editor") {
     return fail(403, "FORBIDDEN", "You need editor access to do that");
@@ -117,7 +152,7 @@ export function requireEditor(caller: Caller | null): Response | null {
 }
 
 export function requireAdmin(caller: Caller | null): Response | null {
-  const unauth = requireUser(caller);
+  const unauth = requireAccess(caller);
   if (unauth) return unauth;
   if (caller!.role !== "admin") {
     return fail(403, "FORBIDDEN", "You need admin access to do that");
